@@ -95,6 +95,31 @@ Financial data licensing is stricter than scientific: redistribution and real-ti
 often restricted; free tiers are rate-limited. Confirm each source's current terms
 (same discipline applied to the patent-API selection in aqueduct).
 
+## ADR-8: Pharma/biotech research surface (the aqueduct edge)
+
+We also invest in pharma + biotech, where value is driven less by current financials and
+more by the **drug pipeline and binary catalysts** (trial readouts, FDA decisions,
+approvals, patent cliffs). Most quant data lacks this; we have a genuine edge because
+**[[aqueduct-harvest-migration]]** already harvests the biomedical graph (clinical trials,
+drugs, proteins, papers, chemical patents via SureChEMBL).
+
+The pharma surface fuses three layers, aligned point-in-time:
+- **Financials** — EDGAR (built): cash runway, R&D spend, burn — survival math for
+  pre-revenue biotech.
+- **Catalysts** — `openfda.py` (built, keyless): drug approval/supplement events =
+  dated catalysts. NOTE: drugsfda is CDER (small-molecule) only; **vaccines/biologics
+  live in CBER and are NOT in drugsfda** — for those the catalyst signal is clinical
+  trials, i.e. aqueduct.
+- **Pipeline (the edge)** — aqueduct's clinical-trial + drug-target graph: phase,
+  status, sponsor, indication, mechanism, and the science behind a program.
+
+**The bridge = sponsor/company name → ticker (CIK).** aqueduct's trials carry a sponsor;
+openFDA carries sponsor_name; EDGAR has the entity/CIK. A fuzzy sponsor→ticker resolver
+links a biotech's pipeline + catalysts to its financials + (later) price. Build target:
+`sources/aqueduct_bridge.py` reading aqueduct's DuckDB / retrieval API, plus a
+security-master entry mapping sponsor aliases → CIK. This makes "show me every Phase-3
+readout due next quarter for companies with <18 months cash runway" a single query.
+
 ## Open questions (resolve at build time)
 
 - Asset classes for v1 (equities? + crypto? + FX/macro?).
