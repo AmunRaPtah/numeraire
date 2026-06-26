@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 
 from . import warehouse, validate as _validate
-from .sources import edgar
+from .sources import edgar, prices, openfda, aqueduct_bridge
 from .storage import connect
 
 
@@ -35,6 +35,12 @@ def main(argv=None):
         print(f"{ticker} {tag} as known on {asof}: {len(rows)} periods")
         for event_date, val, kd, form, accn in rows[-8:]:
             print(f"  {event_date}  {val:>18,.0f}  (filed {kd} via {form})")
+    elif cmd in ("prices", "pipeline", "fda"):
+        fn = {"prices": prices.ingest, "pipeline": aqueduct_bridge.ingest,
+              "fda": openfda.ingest}[cmd]
+        for x in rest:
+            fn(x)
+        warehouse.build()
     elif cmd == "build":
         warehouse.build()
     elif cmd == "validate":
