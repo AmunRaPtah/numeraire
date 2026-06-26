@@ -43,6 +43,13 @@ def main(argv=None):
         warehouse.build()
     elif cmd == "build":
         warehouse.build()
+    elif cmd == "backtest":
+        from . import backtest
+        con = connect()
+        try:
+            warehouse._load_aux(con); backtest.run(con=con)
+        finally:
+            con.close()
     elif cmd == "validate":
         _validate.validate()
     else:
