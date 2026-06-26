@@ -1,0 +1,20 @@
+# data lives off-repo (single archive on OneDrive, like aqueduct)
+data/
+state.tgz
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.duckdb_tmp/
+*.duckdb
+*.duckdb.wal
+
+# secrets / local config
+.env
+.env.local
+*.key
+rclone.conf

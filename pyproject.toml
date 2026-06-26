@@ -1,0 +1,16 @@
+[project]
+name = "numeraire"
+version = "0.0.1"
+description = "Point-in-time financial data + strategy foundation for an automated wealth-creation engine"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.0",
+    # connectors add: httpx/requests; backtest layer added later (vectorbt/backtrader TBD)
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
