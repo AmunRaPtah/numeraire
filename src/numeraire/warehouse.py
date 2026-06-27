@@ -49,6 +49,9 @@ def _load_aux(con):
                               '"type", CAST("value" AS VARCHAR) AS action_value'),
         "pipeline": ("pipeline", "ticker, cik, nct_id, trial_title, status, phases, conditions, "
                      "interventions, start_date, completion_date, lead_sponsor"),
+        "index_membership": ("sp500_membership", 'index_name, ticker, '
+                             'TRY_CAST(added_date AS DATE) AS added_date, '
+                             'TRY_CAST(removed_date AS DATE) AS removed_date'),
     }
     for table, (src, cols) in specs.items():
         pat = str(config.RAW_DIR / src / "*.jsonl")
@@ -59,6 +62,28 @@ def _load_aux(con):
                     f"read_json_auto('{pat}', format='newline_delimited', union_by_name=true)")
         n = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
         print(f"[build]   {table}: {n:,} rows")
+
+
+def members_as_of(asof, index_name="SP500", con=None):
+    """Survivorship-free index membership: tickers that were IN `index_name` on `asof`.
+
+    A name counts as a member on `asof` if it was added on/before that date (or its add
+    date is unknown — it predates our changes-log coverage, so assume present) and not yet
+    removed (removed_date is null or strictly after `asof`). Including removed/delisted
+    names is the whole point: it's what makes a backtest survivorship-free (ADR-2).
+    """
+    owns = con is None
+    con = con or connect()
+    try:
+        return [r[0] for r in con.execute("""
+            SELECT ticker FROM index_membership
+            WHERE index_name = ?
+              AND (added_date  IS NULL OR added_date  <= TRY_CAST(? AS DATE))
+              AND (removed_date IS NULL OR removed_date > TRY_CAST(? AS DATE))
+            ORDER BY ticker
+        """, [index_name, asof, asof]).fetchall()]
+    finally:
+        if owns: con.close()
 
 
 def as_of(cik: int, tag: str, asof: str, unit: str = "USD", con=None):

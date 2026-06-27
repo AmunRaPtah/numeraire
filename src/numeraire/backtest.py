@@ -32,6 +32,28 @@ def _month_end_panel(con):
     return panel
 
 
+def _membership_fn(con):
+    """Return a fn(month_date) -> set of PIT index members, or None if no membership data.
+
+    Cached per-month so we don't re-query the warehouse every rebalance.
+    """
+    from . import warehouse
+    has = con.execute(
+        "SELECT count(*) FROM information_schema.tables WHERE table_name='index_membership'"
+    ).fetchone()[0]
+    if not has:
+        return None
+    cache: dict = {}
+
+    def members(month):
+        key = month.isoformat() if hasattr(month, "isoformat") else str(month)
+        if key not in cache:
+            cache[key] = set(warehouse.members_as_of(key, con=con))
+        return cache[key]
+
+    return members
+
+
 def run(top_frac=0.2, cost_bps=10, con=None):
     owns = con is None
     con = con or connect()
@@ -40,6 +62,10 @@ def run(top_frac=0.2, cost_bps=10, con=None):
         months = sorted(panel)
         if len(months) < 26:
             print("[backtest] not enough history"); return
+        members = _membership_fn(con)
+        print("[backtest] universe: survivorship-free PIT index membership"
+              if members else "[backtest] universe: priced names only "
+              "(no membership table -> survivorship-biased; run `sp500` to fix)")
         strat_rets, bench_rets = [], []
         prev_holdings: set = set()
         for i in range(13, len(months) - 1):
@@ -49,6 +75,10 @@ def run(top_frac=0.2, cost_bps=10, con=None):
             # 12-1 momentum (uses only data up to t-1 -> no lookahead)
             mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
                    for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            # restrict to names that were IN the index as of t (survivorship-free)
+            if members is not None:
+                inx = members(t)
+                mom = {tk: v for tk, v in mom.items() if tk in inx}
             # tradable next month (have price at t and t_next)
             elig = [tk for tk in mom if tk in p_t and tk in p_n and p_t[tk]]
             if len(elig) < 5:

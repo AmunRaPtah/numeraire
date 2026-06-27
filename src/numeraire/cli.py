@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 
 from . import warehouse, validate as _validate
-from .sources import edgar, prices, openfda, aqueduct_bridge
+from .sources import edgar, prices, openfda, aqueduct_bridge, sp500
 from .storage import connect
 
 
@@ -40,6 +40,9 @@ def main(argv=None):
               "fda": openfda.ingest}[cmd]
         for x in rest:
             fn(x)
+        warehouse.build()
+    elif cmd == "sp500":
+        sp500.ingest()
         warehouse.build()
     elif cmd == "build":
         warehouse.build()
