@@ -100,6 +100,129 @@ def run(top_frac=0.2, cost_bps=10, con=None):
         if owns: con.close()
 
 
+def _composite(mom: dict, fundl: dict) -> dict:
+    """Equal-weight z-score composite: momentum + EY + B/P + ROE + gross margin.
+
+    Each factor z-scored cross-sectionally before summing. Tickers with no fundamental
+    data contribute 0.0 on the missing factors (neutral, not penalised).
+    No parameter fitting — no in-sample / out-of-sample bias on the weights.
+    """
+    from . import features
+    z_mom = features.zscore(mom)
+    z_ey  = features.zscore({tk: fundl[tk]["ey"]  for tk in fundl})
+    z_bp  = features.zscore({tk: fundl[tk]["bp"]  for tk in fundl})
+    z_roe = features.zscore({tk: fundl[tk]["roe"] for tk in fundl})
+    z_gm  = features.zscore({tk: fundl[tk]["gm"]  for tk in fundl})
+    return {
+        tk: (z_mom.get(tk, 0.0) + z_ey.get(tk, 0.0) + z_bp.get(tk, 0.0)
+             + z_roe.get(tk, 0.0) + z_gm.get(tk, 0.0))
+        for tk in mom
+    }
+
+
+def _period_report(name: str, months: list, rets: list, period_years: int = 5) -> None:
+    """5-year period breakdown — the parameter-free analog of walk-forward OOS."""
+    chunk = period_years * 12
+    rows = []
+    for i in range(0, len(months), chunk):
+        ms, rs = months[i:i + chunk], rets[i:i + chunk]
+        if len(rs) < 12:
+            continue
+        eq = 1.0
+        for r in rs:
+            eq *= (1 + r)
+        n = len(rs)
+        cagr = eq ** (12 / n) - 1
+        mean = sum(rs) / n
+        var = sum((r - mean) ** 2 for r in rs) / max(n - 1, 1)
+        sd = math.sqrt(var) if var > 0 else 0.0
+        sharpe = mean / sd * math.sqrt(12) if sd else 0.0
+        rows.append((f"{ms[0].year}–{ms[-1].year}", n, cagr, sharpe))
+    if rows:
+        print(f"\n  {name} — {period_years}-year periods:")
+        for lbl, n, cagr, sharpe in rows:
+            print(f"    {lbl} ({n}m): CAGR {cagr*100:+.1f}%  Sharpe {sharpe:.2f}")
+
+
+def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None:
+    """Multi-factor backtest: momentum + value (EY, B/P) + quality (ROE, gross margin).
+
+    Signal = equal-weight cross-sectional z-score sum across all five factors. No
+    parameters fitted → no IS/OOS bias on the combination. Period breakdown shows
+    regime stability (the right analog of walk-forward for a parameter-free model).
+
+    Coverage: fundamental factors apply only to tickers with EDGAR data ingested.
+    Run `numeraire ingest-universe` to populate the full price universe. Tickers
+    without EDGAR data contribute neutral z-scores — momentum still applies to them.
+    """
+    from . import features as _ft
+    owns = con is None
+    con = con or connect()
+    try:
+        panel = _month_end_panel(con)
+        months = sorted(panel)
+        if len(months) < 26:
+            print("[multifactor] not enough price history"); return
+
+        tk_cik = _ft.ticker_cik_map()
+        members = _membership_fn(con)
+
+        all_tickers = {tk for m in panel.values() for tk in m}
+        try:
+            n_edgar = sum(
+                1 for tk in all_tickers
+                if tk_cik.get(tk) and con.execute(
+                    "SELECT 1 FROM fundamentals WHERE cik = ? LIMIT 1", [tk_cik[tk]]
+                ).fetchone()
+            )
+        except Exception:
+            n_edgar = 0
+
+        print(f"[multifactor] factors: mom + EY + B/P + ROE + GM  "
+              f"({n_edgar}/{len(all_tickers)} tickers have EDGAR data)")
+        if members:
+            print("[multifactor] universe: survivorship-free PIT index membership")
+        else:
+            print("[multifactor] universe: priced names only (run `sp500` for survivorship-free)")
+
+        strat_rets, bench_rets, trade_months = [], [], []
+        prev_holdings: set = set()
+        for i in range(13, len(months) - 1):
+            t, t_next = months[i], months[i + 1]
+            p_t, p_n = panel[t], panel[t_next]
+            p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
+
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
+                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            if members is not None:
+                inx = members(t)
+                mom = {tk: v for tk, v in mom.items() if tk in inx}
+            elig = [tk for tk in mom if tk in p_t and tk in p_n and p_t[tk]]
+            if len(elig) < 5:
+                continue
+
+            fundl = _ft.compute(con, tk_cik, t, {tk: p_t[tk] for tk in elig})
+            scores = _composite({tk: mom[tk] for tk in elig}, fundl)
+
+            elig.sort(key=lambda tk: scores[tk], reverse=True)
+            k = max(1, int(len(elig) * top_frac))
+            holdings = set(elig[:k])
+            r = sum(p_n[tk] / p_t[tk] - 1 for tk in holdings) / len(holdings)
+            turnover = len(holdings ^ prev_holdings) / max(len(holdings), 1)
+            r -= turnover * cost_bps / 10000
+            prev_holdings = holdings
+            strat_rets.append(r)
+            bench = [p_n[tk] / p_t[tk] - 1 for tk in elig if p_t[tk]]
+            bench_rets.append(sum(bench) / len(bench))
+            trade_months.append(t)
+
+        _report(f"Multi-factor composite (top {top_frac*100:.0f}%)", strat_rets)
+        _report("Equal-weight benchmark", bench_rets)
+        _period_report(f"Multi-factor composite (top {top_frac*100:.0f}%)", trade_months, strat_rets)
+    finally:
+        if owns: con.close()
+
+
 def _report(name, rets):
     if not rets:
         print(f"  {name}: no trades"); return

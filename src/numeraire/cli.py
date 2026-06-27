@@ -1,9 +1,15 @@
-"""numeraire CLI: ingest EDGAR fundamentals, build the bitemporal warehouse, query
-point-in-time, validate.
+"""numeraire CLI
 
-  python -m numeraire ingest AAPL MRNA      # land + build
-  python -m numeraire pit AAPL Revenues 2020-01-01
-  python -m numeraire validate
+  python -m numeraire ingest AAPL MRNA           land EDGAR fundamentals + rebuild
+  python -m numeraire ingest-universe             ingest EDGAR for all priced tickers
+  python -m numeraire prices AAPL MRNA            land EOD prices
+  python -m numeraire sp500                       load survivorship-free S&P 500 membership
+  python -m numeraire fda GILEAD PFIZER           land FDA drug-approval catalysts
+  python -m numeraire pipeline ABBV               link clinical trials via aqueduct bridge
+  python -m numeraire pit AAPL NetIncomeLoss 2020-01-01
+  python -m numeraire backtest                    momentum-only + multi-factor (if EDGAR present)
+  python -m numeraire build                       rebuild warehouse from landed JSONL files
+  python -m numeraire validate                    PIT integrity checks
 """
 
 from __future__ import annotations
@@ -50,9 +56,34 @@ def main(argv=None):
         from . import backtest
         con = connect()
         try:
-            warehouse._load_aux(con); backtest.run(con=con)
+            warehouse._load_aux(con)
+            print("=== Momentum-only ===")
+            backtest.run(con=con)
+            print("\n=== Multi-factor ===")
+            backtest.run_multifactor(con=con)
         finally:
             con.close()
+    elif cmd == "ingest-universe":
+        # Ingest EDGAR fundamentals for every ticker in the price universe.
+        # Falls back to the curated DEFAULT universe if prices haven't been loaded yet.
+        from .universe import DEFAULT
+        try:
+            con = connect()
+            try:
+                tickers = [r[0] for r in con.execute(
+                    "SELECT DISTINCT ticker FROM prices ORDER BY ticker"
+                ).fetchall()]
+            finally:
+                con.close()
+        except Exception:
+            tickers = []
+        if not tickers:
+            tickers = DEFAULT
+        print(f"[ingest-universe] {len(tickers)} tickers — SEC rate-limit: ~10 req/s, expect ~{len(tickers)//5}s")
+        for tk in tickers:
+            edgar.ingest(tk)
+        warehouse.build()
+        _validate.validate()
     elif cmd == "validate":
         _validate.validate()
     else:
