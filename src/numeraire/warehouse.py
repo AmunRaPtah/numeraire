@@ -52,6 +52,8 @@ def _load_aux(con):
         "index_membership": ("sp500_membership", 'index_name, ticker, '
                              'TRY_CAST(added_date AS DATE) AS added_date, '
                              'TRY_CAST(removed_date AS DATE) AS removed_date'),
+        "security_master": ("security_master", "cik, ticker, name, name_norm, "
+                            "TRY_CAST(fetched_at AS TIMESTAMP) AS fetched_at"),
     }
     for table, (src, cols) in specs.items():
         pat = str(config.RAW_DIR / src / "*.jsonl")

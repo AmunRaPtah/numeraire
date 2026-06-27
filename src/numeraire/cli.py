@@ -4,9 +4,11 @@
   python -m numeraire ingest-universe             ingest EDGAR for all priced tickers
   python -m numeraire prices AAPL MRNA            land EOD prices
   python -m numeraire sp500                       load survivorship-free S&P 500 membership
+  python -m numeraire secmaster                   land SEC CIK/ticker/name map (identity spine)
   python -m numeraire fda GILEAD PFIZER           land FDA drug-approval catalysts
   python -m numeraire pipeline ABBV               link clinical trials via aqueduct bridge
   python -m numeraire pit AAPL NetIncomeLoss 2020-01-01
+  python -m numeraire signals [N] [--asof DATE]  today's ranked composite signal (top N, default 40)
   python -m numeraire backtest                    momentum-only + multi-factor (if EDGAR present)
   python -m numeraire build                       rebuild warehouse from landed JSONL files
   python -m numeraire validate                    PIT integrity checks
@@ -50,8 +52,25 @@ def main(argv=None):
     elif cmd == "sp500":
         sp500.ingest()
         warehouse.build()
+    elif cmd == "secmaster":
+        from .sources import security_master
+        security_master.ingest()
+        warehouse.build()
     elif cmd == "build":
         warehouse.build()
+    elif cmd == "signals":
+        from . import signals as _sig
+        top = 40
+        asof = None
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--asof" and i + 1 < len(rest):
+                asof = rest[i + 1]; i += 2
+            elif rest[i].lstrip("-").isdigit():
+                top = int(rest[i]); i += 1
+            else:
+                i += 1
+        _sig.print_signals(asof=asof, top=top)
     elif cmd == "backtest":
         from . import backtest
         con = connect()
