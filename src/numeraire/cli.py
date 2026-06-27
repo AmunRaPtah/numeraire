@@ -8,8 +8,9 @@
   python -m numeraire fda GILEAD PFIZER           land FDA drug-approval catalysts
   python -m numeraire pipeline ABBV               link clinical trials via aqueduct bridge
   python -m numeraire pit AAPL NetIncomeLoss 2020-01-01
+  python -m numeraire fred [SERIES ...]           land FRED macro series (requires FRED_API_KEY)
   python -m numeraire signals [N] [--asof DATE]  today's ranked composite signal (top N, default 40)
-  python -m numeraire backtest                    momentum-only + multi-factor (if EDGAR present)
+  python -m numeraire backtest                    momentum-only + multi-factor + regime breakdown
   python -m numeraire build                       rebuild warehouse from landed JSONL files
   python -m numeraire validate                    PIT integrity checks
 """
@@ -82,6 +83,10 @@ def main(argv=None):
             backtest.run_multifactor(con=con)
         finally:
             con.close()
+    elif cmd == "fred":
+        from .sources import fred as _fred
+        _fred.ingest([s.upper() for s in rest] if rest else None)
+        warehouse.build()
     elif cmd == "ingest-universe":
         # Ingest EDGAR fundamentals for every ticker in the price universe.
         # Falls back to the curated DEFAULT universe if prices haven't been loaded yet.

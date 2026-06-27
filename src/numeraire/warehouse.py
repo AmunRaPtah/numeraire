@@ -54,6 +54,11 @@ def _load_aux(con):
                              'TRY_CAST(removed_date AS DATE) AS removed_date'),
         "security_master": ("security_master", "cik, ticker, name, name_norm, "
                             "TRY_CAST(fetched_at AS TIMESTAMP) AS fetched_at"),
+        "macro": ("fred", 'series_id, '
+                  'TRY_CAST(event_date AS DATE) AS event_date, '
+                  'TRY_CAST(knowledge_date AS DATE) AS knowledge_date, '
+                  'CAST(val AS DOUBLE) AS val, '
+                  'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
     }
     for table, (src, cols) in specs.items():
         pat = str(config.RAW_DIR / src / "*.jsonl")

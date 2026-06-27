@@ -66,7 +66,7 @@ def run(top_frac=0.2, cost_bps=10, con=None):
         print("[backtest] universe: survivorship-free PIT index membership"
               if members else "[backtest] universe: priced names only "
               "(no membership table -> survivorship-biased; run `sp500` to fix)")
-        strat_rets, bench_rets = [], []
+        strat_rets, bench_rets, trade_months = [], [], []
         prev_holdings: set = set()
         for i in range(13, len(months) - 1):
             t, t_next = months[i], months[i + 1]
@@ -94,8 +94,10 @@ def run(top_frac=0.2, cost_bps=10, con=None):
             strat_rets.append(r)
             bench = [p_n[tk] / p_t[tk] - 1 for tk in elig if p_t[tk]]
             bench_rets.append(sum(bench) / len(bench))
+            trade_months.append(t)
         _report("Momentum 12-1 (top %.0f%%)" % (top_frac * 100), strat_rets)
         _report("Equal-weight benchmark", bench_rets)
+        _regime_report(con, trade_months, strat_rets, bench_rets)
     finally:
         if owns: con.close()
 
@@ -118,6 +120,40 @@ def _composite(mom: dict, fundl: dict) -> dict:
              + z_roe.get(tk, 0.0) + z_gm.get(tk, 0.0))
         for tk in mom
     }
+
+
+def _regime_report(con, trade_months: list, strat_rets: list, bench_rets: list) -> None:
+    """Performance breakdown by macro regime (silent if no FRED macro data loaded)."""
+    try:
+        from .sources import fred
+        labels = fred.regime_series(con, trade_months)
+    except Exception:
+        return
+    if not labels or all(v == "unknown" for v in labels.values()):
+        return
+
+    by: dict[str, dict] = {}
+    for m, sr, br in zip(trade_months, strat_rets, bench_rets):
+        lbl = labels.get(m, "unknown")
+        by.setdefault(lbl, {"s": [], "b": []})
+        by[lbl]["s"].append(sr)
+        by[lbl]["b"].append(br)
+
+    print("\n  Regime breakdown:")
+    for lbl in ("expansion", "late_cycle", "risk_off", "recession", "recovery", "unknown"):
+        d = by.get(lbl)
+        if not d or not d["s"]:
+            continue
+        n = len(d["s"])
+        sm = sum(d["s"]) / n
+        bm = sum(d["b"]) / n
+        sd = math.sqrt(sum((r - sm) ** 2 for r in d["s"]) / max(n - 1, 1))
+        sharpe = sm / sd * math.sqrt(12) if sd > 0 else 0.0
+        s_ann = (1 + sm) ** 12 - 1
+        b_ann = (1 + bm) ** 12 - 1
+        print(f"    {lbl:<12} ({n:>3}m): "
+              f"strat {s_ann*100:+.1f}%/yr  bench {b_ann*100:+.1f}%/yr  "
+              f"alpha {(s_ann-b_ann)*100:+.1f}%  Sharpe {sharpe:.2f}")
 
 
 def _period_report(name: str, months: list, rets: list, period_years: int = 5) -> None:
@@ -219,6 +255,7 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
         _report(f"Multi-factor composite (top {top_frac*100:.0f}%)", strat_rets)
         _report("Equal-weight benchmark", bench_rets)
         _period_report(f"Multi-factor composite (top {top_frac*100:.0f}%)", trade_months, strat_rets)
+        _regime_report(con, trade_months, strat_rets, bench_rets)
     finally:
         if owns: con.close()
 

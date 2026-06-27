@@ -174,6 +174,20 @@ def print_signals(asof: str | None = None, top: int = 40, con=None) -> None:
         print("  Run: numeraire prices AAPL MSFT NVDA ...  (or ingest-universe)")
         return
 
+    # Macro regime header (silent if no FRED data loaded)
+    try:
+        from .sources import fred as _fred
+        reg = _fred.regime(con or connect(), asof)
+        if reg["label"] != "unknown":
+            parts = []
+            if reg["fed_rate"]  is not None: parts.append(f"fed={reg['fed_rate']:.2f}%")
+            if reg["curve"]     is not None: parts.append(f"curve={reg['curve']:+.2f}%")
+            if reg["hy_spread"] is not None: parts.append(f"hy={reg['hy_spread']:.2f}%")
+            if reg["vix"]       is not None: parts.append(f"vix={reg['vix']:.1f}")
+            print(f"[regime]  {reg['display']}  {' | '.join(parts)}")
+    except Exception:
+        pass
+
     n_full = sum(1 for r in rows if r["n_factors"] == 5)
     n_partial = sum(1 for r in rows if 1 < r["n_factors"] < 5)
     n_mom_only = sum(1 for r in rows if r["n_factors"] == 1)
