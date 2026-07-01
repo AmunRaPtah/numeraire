@@ -59,6 +59,20 @@ def _load_aux(con):
                   'TRY_CAST(knowledge_date AS DATE) AS knowledge_date, '
                   'CAST(val AS DOUBLE) AS val, '
                   'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
+        "estimates": ("estimates", 'ticker, period, TRY_CAST(fetched_date AS DATE) AS fetched_date, '
+                      'CAST(avg_estimate AS DOUBLE) AS avg_estimate, '
+                      'CAST(num_analysts AS INTEGER) AS num_analysts, '
+                      'CAST(growth AS DOUBLE) AS growth, '
+                      'CAST(eps_trend_current AS DOUBLE) AS eps_trend_current, '
+                      'CAST(eps_trend_7d_ago AS DOUBLE) AS eps_trend_7d_ago, '
+                      'CAST(eps_trend_30d_ago AS DOUBLE) AS eps_trend_30d_ago, '
+                      'CAST(eps_trend_60d_ago AS DOUBLE) AS eps_trend_60d_ago, '
+                      'CAST(eps_trend_90d_ago AS DOUBLE) AS eps_trend_90d_ago, '
+                      'CAST(revisions_up_7d AS INTEGER) AS revisions_up_7d, '
+                      'CAST(revisions_down_7d AS INTEGER) AS revisions_down_7d, '
+                      'CAST(revisions_up_30d AS INTEGER) AS revisions_up_30d, '
+                      'CAST(revisions_down_30d AS INTEGER) AS revisions_down_30d, '
+                      'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
     }
     for table, (src, cols) in specs.items():
         pat = str(config.RAW_DIR / src / "*.jsonl")

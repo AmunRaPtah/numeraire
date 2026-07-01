@@ -54,7 +54,7 @@ jobs:
           else
             echo "No aqueduct state.tgz on OneDrive — pipeline bridge will skip"
           fi
-      - name: Harvest (membership + security master + EDGAR fundamentals + prices + pharma edge)
+      - name: Harvest (membership + security master + EDGAR fundamentals + prices + estimates + crypto + pharma edge)
         env:
           NUMERAIRE_AQUEDUCT_DB: ${{ github.workspace }}/aqueduct-data/warehouse.duckdb
         run: |
@@ -62,6 +62,8 @@ jobs:
           python -m numeraire secmaster
           python -m numeraire ingest-universe
           python -m numeraire prices-universe
+          python -m numeraire estimates-universe
+          python -m numeraire crypto
           python -m numeraire fda-universe
           python -m numeraire pipeline-universe
       - name: Push updated warehouse state to OneDrive

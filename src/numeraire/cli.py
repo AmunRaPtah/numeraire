@@ -10,6 +10,9 @@
   python -m numeraire fda-universe                FDA catalysts for the curated pharma/biotech list
   python -m numeraire pipeline ABBV               link clinical trials via aqueduct bridge
   python -m numeraire pipeline-universe           pipeline bridge for the curated pharma/biotech list
+  python -m numeraire estimates AAPL MRNA         land analyst consensus EPS estimates + revision trend
+  python -m numeraire estimates-universe          estimates for the current S&P 500 members
+  python -m numeraire crypto                      land EOD prices for the curated crypto list
   python -m numeraire pit AAPL NetIncomeLoss 2020-01-01
   python -m numeraire fred [SERIES ...]           land FRED macro series (requires FRED_API_KEY)
   python -m numeraire signals [N] [--asof DATE]  today's ranked composite signal (top N, default 40)
@@ -23,7 +26,7 @@ from __future__ import annotations
 import sys
 
 from . import warehouse, validate as _validate
-from .sources import edgar, prices, openfda, aqueduct_bridge, sp500
+from .sources import edgar, prices, openfda, aqueduct_bridge, sp500, estimates
 from .storage import connect
 
 
@@ -140,6 +143,29 @@ def main(argv=None):
         from .universe import PHARMA_BIOTECH
         for tk in PHARMA_BIOTECH:
             aqueduct_bridge.ingest(tk)
+        warehouse.build()
+    elif cmd == "estimates":
+        for t in rest:
+            estimates.ingest(t)
+        warehouse.build()
+    elif cmd == "estimates-universe":
+        from datetime import date
+        con = connect()
+        try:
+            tickers = warehouse.members_as_of(date.today().isoformat(), con=con)
+        finally:
+            con.close()
+        if not tickers:
+            from .universe import DEFAULT
+            tickers = DEFAULT
+        print(f"[estimates-universe] refreshing {len(tickers)} tickers")
+        for tk in tickers:
+            estimates.ingest(tk)
+        warehouse.build()
+    elif cmd == "crypto":
+        from .universe import CRYPTO
+        for tk in CRYPTO:
+            prices.ingest(tk)
         warehouse.build()
     elif cmd == "validate":
         _validate.validate()
