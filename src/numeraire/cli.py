@@ -3,10 +3,13 @@
   python -m numeraire ingest AAPL MRNA           land EDGAR fundamentals + rebuild
   python -m numeraire ingest-universe             ingest EDGAR for all priced tickers
   python -m numeraire prices AAPL MRNA            land EOD prices
+  python -m numeraire prices-universe             refresh EOD prices for current S&P 500 members
   python -m numeraire sp500                       load survivorship-free S&P 500 membership
   python -m numeraire secmaster                   land SEC CIK/ticker/name map (identity spine)
   python -m numeraire fda GILEAD PFIZER           land FDA drug-approval catalysts
+  python -m numeraire fda-universe                FDA catalysts for the curated pharma/biotech list
   python -m numeraire pipeline ABBV               link clinical trials via aqueduct bridge
+  python -m numeraire pipeline-universe           pipeline bridge for the curated pharma/biotech list
   python -m numeraire pit AAPL NetIncomeLoss 2020-01-01
   python -m numeraire fred [SERIES ...]           land FRED macro series (requires FRED_API_KEY)
   python -m numeraire signals [N] [--asof DATE]  today's ranked composite signal (top N, default 40)
@@ -108,6 +111,36 @@ def main(argv=None):
             edgar.ingest(tk)
         warehouse.build()
         _validate.validate()
+    elif cmd == "prices-universe":
+        # Refresh EOD prices + corporate actions for the *currently active* S&P 500
+        # membership (not the full survivorship-free history) — delisted tickers
+        # won't have new bars, so re-fetching them every run is wasted API calls.
+        from datetime import date
+        con = connect()
+        try:
+            tickers = warehouse.members_as_of(date.today().isoformat(), con=con)
+        finally:
+            con.close()
+        if not tickers:
+            from .universe import DEFAULT
+            tickers = DEFAULT
+        print(f"[prices-universe] refreshing {len(tickers)} tickers")
+        for tk in tickers:
+            prices.ingest(tk)
+        warehouse.build()
+        _validate.validate()
+    elif cmd == "fda-universe":
+        from .universe import PHARMA_BIOTECH
+        for tk in PHARMA_BIOTECH:
+            title = aqueduct_bridge._company_title(tk)
+            tok = aqueduct_bridge._match_token(title) if title else None
+            openfda.ingest(tok or tk)
+        warehouse.build()
+    elif cmd == "pipeline-universe":
+        from .universe import PHARMA_BIOTECH
+        for tk in PHARMA_BIOTECH:
+            aqueduct_bridge.ingest(tk)
+        warehouse.build()
     elif cmd == "validate":
         _validate.validate()
     else:
