@@ -7,20 +7,56 @@ revision trend (current estimate vs 7/30/60/90 days ago), so even a single fetch
 gives revision momentum; weekly re-fetches (event_date=knowledge_date=fetch date)
 accumulate a genuine bitemporal history of what was known when — a snapshot fact,
 not a restatable one, so there's no lookahead risk the way there is for fundamentals.
+
+Unlike the `chart` endpoint prices.py uses, `quoteSummary` requires a session cookie
++ CSRF "crumb" (Yahoo's anti-scraping gate). We bootstrap that once per process and
+reuse it for the whole batch (~500 tickers) — bootstrapping per-ticker would both be
+wasteful and trip Yahoo's rate limiter, which is tighter on this endpoint than on
+`chart`. If the bootstrap or a given ticker fails, we degrade gracefully (skip, don't
+raise) — this is a best-effort free substitute for paid data, not a guaranteed feed.
 """
 
 from __future__ import annotations
 
+import http.cookiejar
 import json
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import date, datetime, timezone
 
-from .. import config, net
+from .. import config
 from ..landing import merge_jsonl
 
 QUOTE_SUMMARY = ("https://query1.finance.yahoo.com/v10/finance/quoteSummary/{t}"
-                  "?modules=earningsTrend")
-UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+                  "?modules=earningsTrend&crumb={crumb}")
+GET_CRUMB = "https://query1.finance.yahoo.com/v1/test/getcrumb"
+WARMUP = "https://fc.yahoo.com"
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
 KEY = ("ticker", "period", "fetched_date")
+
+_opener_cache: tuple | None = None  # (opener, crumb) — bootstrapped once, reused
+
+
+def _bootstrap():
+    """Warm up a cookie session + fetch a CSRF crumb. Cached for the process lifetime."""
+    global _opener_cache
+    if _opener_cache is not None:
+        return _opener_cache
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    try:
+        opener.open(urllib.request.Request(WARMUP, headers=UA), timeout=15)
+    except Exception:
+        pass  # fc.yahoo.com 404s but still seeds cookies via redirects
+    try:
+        crumb = opener.open(urllib.request.Request(GET_CRUMB, headers=UA), timeout=15).read().decode()
+    except Exception as e:
+        print(f"[estimates] crumb bootstrap failed (will skip estimates this run): {e}")
+        _opener_cache = (None, None)
+        return _opener_cache
+    _opener_cache = (opener, crumb)
+    return _opener_cache
 
 
 def _raw(d: dict | None):
@@ -29,9 +65,13 @@ def _raw(d: dict | None):
 
 def ingest(ticker: str) -> tuple[str, int, int]:
     t = ticker.upper()
+    opener, crumb = _bootstrap()
+    if opener is None:
+        return ("", 0, 0)
+    url = QUOTE_SUMMARY.format(t=t, crumb=urllib.parse.quote(crumb))
     try:
-        payload = json.loads(net.request(QUOTE_SUMMARY.format(t=t), timeout=30, headers=UA))
-    except net.NetworkError as e:
+        payload = json.loads(opener.open(urllib.request.Request(url, headers=UA), timeout=30).read())
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
         print(f"[estimates] {t}: {e}"); return ("", 0, 0)
     results = ((payload.get("quoteSummary") or {}).get("result")) or []
     if not results:
