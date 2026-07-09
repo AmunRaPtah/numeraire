@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import sys
 
-from . import warehouse, validate as _validate
-from .sources import edgar, prices, openfda, aqueduct_bridge, sp500, estimates
+from . import validate as _validate
+from . import warehouse
+from .sources import aqueduct_bridge, edgar, estimates, openfda, prices, sp500
 from .storage import connect
 
 
@@ -169,6 +170,43 @@ def main(argv=None):
         warehouse.build()
     elif cmd == "validate":
         _validate.validate()
+    elif cmd == "serve":
+        from . import serve as _serve
+        _serve.main(rest)
+    elif cmd in ("watch", "unwatch"):
+        from .sources.realtime import watch, unwatch, watched_symbols
+        if cmd == "watch":
+            if not rest:
+                print("Usage: numeraire watch SYMBOL [SYMBOL ...]")
+                return
+            watch(rest)
+            print(f"Watching: {len(rest)} symbol(s). Currently watched: {len(watched_symbols())}")
+        elif cmd == "unwatch":
+            unwatch(rest)
+            print(f"Unwatched: {len(rest)} symbol(s). Currently watched: {len(watched_symbols())}")
+    elif cmd == "watched":
+        from .sources.realtime import watched_symbols
+        symbols = watched_symbols()
+        if symbols:
+            print("Watched symbols:", ", ".join(symbols))
+        else:
+            print("No symbols being watched")
+    elif cmd == "realtime-latest":
+        from .sources.realtime import latest_tick
+        from .storage import connect
+        if not rest:
+            print("Usage: numeraire realtime-latest SYMBOL")
+            return
+        con = connect()
+        try:
+            tick = latest_tick(con, rest[0].upper())
+            if tick:
+                print(f"{tick['ticker']}: ${tick['price']:.2f} ({tick['change']:+.2f}%) "
+                      f"vol={tick['volume']} @ {tick['timestamp']}")
+            else:
+                print(f"No realtime data for {rest[0].upper()}")
+        finally:
+            con.close()
     else:
         print(__doc__)
 

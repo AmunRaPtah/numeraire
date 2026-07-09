@@ -23,7 +23,6 @@ not hidden: membership PIT removes the inclusion/look-ahead bias even where pric
 from __future__ import annotations
 
 import re
-from datetime import date
 from html.parser import HTMLParser
 
 from .. import config, net

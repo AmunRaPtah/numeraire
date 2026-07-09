@@ -12,24 +12,33 @@ from . import config
 from .storage import connect
 
 
+def _has_files(glob_pattern: str) -> bool:
+    import glob
+    return bool(glob.glob(glob_pattern))
+
+
 def build(con=None) -> int:
     owns = con is None
     con = con or connect()
     try:
         pattern = str(config.RAW_DIR / "edgar" / "*.jsonl")
         con.execute("DROP TABLE IF EXISTS fundamentals")
-        con.execute(f"""
-            CREATE TABLE fundamentals AS
-            SELECT cik, entity, taxonomy, tag, unit,
-                   TRY_CAST(start AS DATE) AS start_date,
-                   TRY_CAST("end" AS DATE)  AS event_date,    -- when it applies
-                   TRY_CAST(filed AS DATE)  AS knowledge_date, -- when it was knowable
-                   CAST(val AS DOUBLE) AS val,
-                   accn, fy, fp, form, frame
-            FROM read_json_auto('{pattern}', format='newline_delimited', union_by_name=true)
-        """)
-        n = con.execute("SELECT count(*) FROM fundamentals").fetchone()[0]
-        print(f"[build]   fundamentals: {n:,} observations")
+        if _has_files(pattern):
+            con.execute(f"""
+                CREATE TABLE fundamentals AS
+                SELECT cik, entity, taxonomy, tag, unit,
+                       TRY_CAST(start AS DATE) AS start_date,
+                       TRY_CAST("end" AS DATE)  AS event_date,    -- when it applies
+                       TRY_CAST(filed AS DATE)  AS knowledge_date, -- when it was knowable
+                       CAST(val AS DOUBLE) AS val,
+                       accn, fy, fp, form, frame
+                FROM read_json_auto('{pattern}', format='newline_delimited', union_by_name=true)
+            """)
+            n = con.execute("SELECT count(*) FROM fundamentals").fetchone()[0]
+            print(f"[build]   fundamentals: {n:,} observations")
+        else:
+            n = 0
+            print("[build]   no EDGAR files, fundamentals table empty")
         _load_aux(con)
         return n
     finally:

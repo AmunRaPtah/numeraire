@@ -263,18 +263,157 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
 def _report(name, rets):
     if not rets:
         print(f"  {name}: no trades"); return
+    metrics = _compute_metrics(rets)
+    print(f"  {name}: {metrics['n_months']} months ({metrics['years']:.1f}y) | "
+          f"total x{metrics['total_return']:.2f} | CAGR {metrics['cagr']*100:.1f}% "
+          f"| Sharpe {metrics['sharpe']:.2f} | maxDD {metrics['max_drawdown']*100:.1f}%")
+
+
+def _compute_metrics(rets: list[float]) -> dict:
+    """Compute backtest metrics from a return series.
+
+    Returns:
+        {n_months, years, total_return, cagr, sharpe, max_drawdown, volatility}
+    """
+    if not rets:
+        return {"n_months": 0, "years": 0, "total_return": 1.0,
+                "cagr": 0, "sharpe": 0, "max_drawdown": 0, "volatility": 0}
+
     n = len(rets)
-    eq = 1.0; curve = []
+    eq = 1.0
+    curve = []
     for r in rets:
-        eq *= (1 + r); curve.append(eq)
+        eq *= (1 + r)
+        curve.append(eq)
+
     yrs = n / 12
     cagr = eq ** (1 / yrs) - 1 if yrs > 0 else 0
     mean = sum(rets) / n
     var = sum((r - mean) ** 2 for r in rets) / max(n - 1, 1)
-    sd = math.sqrt(var)
+    sd = math.sqrt(var) if var > 0 else 0
     sharpe = (mean / sd * math.sqrt(12)) if sd else 0
-    peak = -1e9; mdd = 0
+
+    peak = -1e9
+    mdd = 0
     for v in curve:
-        peak = max(peak, v); mdd = min(mdd, v / peak - 1)
-    print(f"  {name}: {n} months ({yrs:.1f}y) | total x{eq:.2f} | CAGR {cagr*100:.1f}% "
-          f"| Sharpe {sharpe:.2f} | maxDD {mdd*100:.1f}%")
+        peak = max(peak, v)
+        mdd = min(mdd, v / peak - 1)
+
+    return {
+        "n_months": n,
+        "years": round(yrs, 1),
+        "total_return": round(eq, 4),
+        "cagr": round(cagr, 4),
+        "sharpe": round(sharpe, 4),
+        "max_drawdown": round(mdd, 4),
+        "volatility": round(sd, 4),
+    }
+
+
+# ── Programmatic API (returns dicts, used by the Hermes backtest gate) ──────
+
+
+def run_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
+                     con=None) -> dict:
+    """Programmatic version of ``run()`` that returns a metrics dict.
+
+    Same logic as ``run()`` but returns ``{strategy: metrics, benchmark: metrics,
+    regime_breakdown: {...}}`` instead of printing to stdout.
+    """
+    from . import warehouse as _wh
+
+    owns = con is None
+    con = con or connect()
+    try:
+        panel = _month_end_panel(con)
+        months = sorted(panel)
+        if len(months) < 26:
+            return {"error": "not enough price history (need 26+ months)"}
+
+        members = _membership_fn(con)
+        strat_rets, bench_rets = [], []
+
+        for i in range(13, len(months) - 1):
+            t, t_next = months[i], months[i + 1]
+            p_t, p_n = panel[t], panel[t_next]
+            p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
+
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
+                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            if members is not None:
+                inx = members(t)
+                mom = {tk: v for tk, v in mom.items() if tk in inx}
+
+            elig = [tk for tk in mom if tk in p_t and tk in p_n and p_t[tk]]
+            if len(elig) < 5:
+                continue
+
+            elig.sort(key=lambda tk: mom[tk], reverse=True)
+            k = max(1, int(len(elig) * top_frac))
+            holdings = set(elig[:k])
+            r = sum(p_n[tk] / p_t[tk] - 1 for tk in holdings) / len(holdings)
+            strat_rets.append(r)
+            bench = [p_n[tk] / p_t[tk] - 1 for tk in elig if p_t[tk]]
+            bench_rets.append(sum(bench) / len(bench))
+
+        return {
+            "strategy": _compute_metrics(strat_rets),
+            "benchmark": _compute_metrics(bench_rets),
+        }
+    finally:
+        if owns:
+            con.close()
+
+
+def run_multifactor_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
+                                  con=None) -> dict:
+    """Programmatic version of ``run_multifactor()`` that returns a metrics dict."""
+    from . import features as _ft
+    from . import warehouse as _wh
+
+    owns = con is None
+    con = con or connect()
+    try:
+        panel = _month_end_panel(con)
+        months = sorted(panel)
+        if len(months) < 26:
+            return {"error": "not enough price history (need 26+ months)"}
+
+        tk_cik = _ft.ticker_cik_map()
+        members = _membership_fn(con)
+        strat_rets, bench_rets = [], []
+
+        for i in range(13, len(months) - 1):
+            t, t_next = months[i], months[i + 1]
+            p_t, p_n = panel[t], panel[t_next]
+            p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
+
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
+                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            if members is not None:
+                inx = members(t)
+                mom = {tk: v for tk, v in mom.items() if tk in inx}
+
+            elig = [tk for tk in mom if tk in p_t and tk in p_n and p_t[tk]]
+            if len(elig) < 5:
+                continue
+
+            fundl = _ft.compute(con, tk_cik, t, {tk: p_t[tk] for tk in elig})
+            scores = _composite({tk: mom[tk] for tk in elig}, fundl)
+
+            elig.sort(key=lambda tk: scores[tk], reverse=True)
+            k = max(1, int(len(elig) * top_frac))
+            holdings = set(elig[:k])
+
+            r = sum(p_n[tk] / p_t[tk] - 1 for tk in holdings) / len(holdings)
+            strat_rets.append(r)
+            bench = [p_n[tk] / p_t[tk] - 1 for tk in elig if p_t[tk]]
+            bench_rets.append(sum(bench) / len(bench))
+
+        return {
+            "strategy": _compute_metrics(strat_rets),
+            "benchmark": _compute_metrics(bench_rets),
+        }
+    finally:
+        if owns:
+            con.close()

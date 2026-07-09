@@ -9,8 +9,8 @@ the full as-of history accumulates.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
 
 
 def _key(rec: dict, key):

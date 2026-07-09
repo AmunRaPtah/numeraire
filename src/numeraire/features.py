@@ -13,7 +13,8 @@ Run `numeraire ingest-universe` to bulk-populate the price universe.
 from __future__ import annotations
 
 import math
-from datetime import date as _date, timedelta
+from datetime import date as _date
+from datetime import timedelta
 
 
 def ticker_cik_map() -> dict[str, int]:
