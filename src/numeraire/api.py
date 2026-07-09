@@ -9,17 +9,17 @@ Run with:  python -m numeraire serve [--port 8100]
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import os
 import time
 from datetime import date
-import asyncio
 from functools import wraps
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import signals, universe, warehouse as _wh
+from . import signals, universe
+from . import warehouse as _wh
 from .sources import fred as _fred
 from .storage import connect
 
@@ -47,6 +47,7 @@ _cache: dict[str, tuple[float, object]] = {}  # key -> (expires_at, value)
 
 def _cached(ttl_s: int = 30):
     """Decorator that caches JSON responses for `ttl_s` seconds."""
+
     def deco(f):
         @wraps(f)
         async def wrapper(*args, **kw):
@@ -62,7 +63,9 @@ def _cached(ttl_s: int = 30):
                 val = f(*args, **kw)
             _cache[key] = (now + ttl_s, val)
             return val
+
         return wrapper
+
     return deco
 
 
@@ -73,7 +76,7 @@ def _open_con():
         _wh._load_aux(con)
         return con
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Warehouse unavailable: {exc}")
+        raise HTTPException(status_code=503, detail=f"Warehouse unavailable: {exc}") from exc
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -86,16 +89,14 @@ async def health():
     con = connect()
     try:
         _wh._load_aux(con)
-        p_count = con.execute(
-            "SELECT count(*) FROM prices"
-        ).fetchone()[0]
-        f_count = con.execute(
-            "SELECT count(*) FROM fundamentals"
-        ).fetchone()[0]
-        has_fred = con.execute(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_name='fred'"
-        ).fetchone()[0] > 0
+        p_count = con.execute("SELECT count(*) FROM prices").fetchone()[0]
+        f_count = con.execute("SELECT count(*) FROM fundamentals").fetchone()[0]
+        has_fred = (
+            con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='fred'").fetchone()[
+                0
+            ]
+            > 0
+        )
         return {
             "status": "ok",
             "prices_count": p_count,
@@ -104,7 +105,7 @@ async def health():
             "timestamp": time.time(),
         }
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     finally:
         con.close()
 
@@ -114,7 +115,9 @@ async def health():
 async def ranked_signals(
     top: int = Query(default=40, ge=1, le=200),
     asof: str | None = None,
-    universe: str | None = Query(default=None, description="Filter to universe: general, pharma_biotech, crypto"),
+    universe: str | None = Query(
+        default=None, description="Filter to universe: general, pharma_biotech, crypto"
+    ),
 ):
     """Ranked tickers by multi-factor composite score.
 
@@ -187,6 +190,7 @@ async def factor_profile(
 
         # Momentum (12-1)
         from .signals import _pit_momentum
+
         mom = _pit_momentum(con, asof)
         mom_val = mom.get(sym)
 
@@ -273,8 +277,12 @@ async def price_history(
             "prices": [
                 {
                     "date": r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0]),
-                    "open": r[1], "high": r[2], "low": r[3],
-                    "close": r[4], "adjclose": r[5], "volume": r[6],
+                    "open": r[1],
+                    "high": r[2],
+                    "low": r[3],
+                    "close": r[4],
+                    "adjclose": r[5],
+                    "volume": r[6],
                 }
                 for r in rows
             ],

@@ -17,7 +17,8 @@ def main(argv: list[str] | None = None) -> None:
         description="Start the Numeraire live signal API server",
     )
     parser.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         type=int,
         default=int(os.environ.get("NUMERAIRE_PORT", 8100)),
         help="Port to bind (default: 8100, env: NUMERAIRE_PORT)",

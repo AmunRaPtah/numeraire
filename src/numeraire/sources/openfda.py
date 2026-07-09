@@ -29,20 +29,30 @@ def _events(payload: dict):
         sponsor = r.get("sponsor_name")
         products = r.get("products") or []
         brand = "; ".join(sorted({p.get("brand_name", "") for p in products if p.get("brand_name")}))
-        substance = "; ".join(sorted({s for p in products for s in (p.get("active_ingredients") or [])
-                                      if isinstance(s, str)})) or \
-                    "; ".join(sorted({ai.get("name", "") for p in products
-                                      for ai in (p.get("active_ingredients") or []) if isinstance(ai, dict)}))
-        for sub in (r.get("submissions") or []):
+        substance = "; ".join(
+            sorted({s for p in products for s in (p.get("active_ingredients") or []) if isinstance(s, str)})
+        ) or "; ".join(
+            sorted(
+                {
+                    ai.get("name", "")
+                    for p in products
+                    for ai in (p.get("active_ingredients") or [])
+                    if isinstance(ai, dict)
+                }
+            )
+        )
+        for sub in r.get("submissions") or []:
             sd = sub.get("submission_status_date")  # YYYYMMDD
             iso = f"{sd[:4]}-{sd[4:6]}-{sd[6:8]}" if sd and len(sd) == 8 else None
             yield {
-                "application_number": app, "sponsor_name": sponsor,
-                "brand": brand, "substance": substance,
+                "application_number": app,
+                "sponsor_name": sponsor,
+                "brand": brand,
+                "substance": substance,
                 "submission_type": sub.get("submission_type"),
                 "submission_number": sub.get("submission_number"),
                 "submission_status": sub.get("submission_status"),
-                "event_date": iso,            # the catalyst date (approval/supplement)
+                "event_date": iso,  # the catalyst date (approval/supplement)
                 "review_priority": sub.get("review_priority"),
                 "fetched_at": fetched,
             }
@@ -55,12 +65,14 @@ def ingest(sponsor: str, limit: int = 1000) -> tuple[str, int, int]:
     try:
         payload = json.loads(net.request(url, timeout=30))
     except net.PermanentError as e:
-        if getattr(e, "status", None) == 404:   # openFDA's "no matches" (e.g. biologics-only)
+        if getattr(e, "status", None) == 404:  # openFDA's "no matches" (e.g. biologics-only)
             print(f"[openfda]  {sponsor}: no drugsfda matches (biologics live in CBER/trials)")
             return ("", 0, 0)
-        print(f"[openfda]  {sponsor}: {e}"); return ("", 0, 0)
+        print(f"[openfda]  {sponsor}: {e}")
+        return ("", 0, 0)
     except net.NetworkError as e:
-        print(f"[openfda]  {sponsor}: {e}"); return ("", 0, 0)
+        print(f"[openfda]  {sponsor}: {e}")
+        return ("", 0, 0)
     rows = list(_events(payload))
     src = config.raw_source_dir("openfda")
     safe = "".join(c if c.isalnum() else "_" for c in sponsor)[:40]

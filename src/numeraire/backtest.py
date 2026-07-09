@@ -26,7 +26,7 @@ def _month_end_panel(con):
         FROM prices WHERE adjclose IS NOT NULL
         GROUP BY ticker, m ORDER BY m
     """).fetchall()
-    panel: dict = {}   # month -> {ticker: px}
+    panel: dict = {}  # month -> {ticker: px}
     for tkr, m, px in rows:
         panel.setdefault(m, {})[tkr] = px
     return panel
@@ -38,6 +38,7 @@ def _membership_fn(con):
     Cached per-month so we don't re-query the warehouse every rebalance.
     """
     from . import warehouse
+
     has = con.execute(
         "SELECT count(*) FROM information_schema.tables WHERE table_name='index_membership'"
     ).fetchone()[0]
@@ -61,11 +62,15 @@ def run(top_frac=0.2, cost_bps=10, con=None):
         panel = _month_end_panel(con)
         months = sorted(panel)
         if len(months) < 26:
-            print("[backtest] not enough history"); return
+            print("[backtest] not enough history")
+            return
         members = _membership_fn(con)
-        print("[backtest] universe: survivorship-free PIT index membership"
-              if members else "[backtest] universe: priced names only "
-              "(no membership table -> survivorship-biased; run `sp500` to fix)")
+        print(
+            "[backtest] universe: survivorship-free PIT index membership"
+            if members
+            else "[backtest] universe: priced names only "
+            "(no membership table -> survivorship-biased; run `sp500` to fix)"
+        )
         strat_rets, bench_rets, trade_months = [], [], []
         prev_holdings: set = set()
         for i in range(13, len(months) - 1):
@@ -73,8 +78,7 @@ def run(top_frac=0.2, cost_bps=10, con=None):
             p_t, p_n = panel[t], panel[t_next]
             p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
             # 12-1 momentum (uses only data up to t-1 -> no lookahead)
-            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
-                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1 for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
             # restrict to names that were IN the index as of t (survivorship-free)
             if members is not None:
                 inx = members(t)
@@ -99,7 +103,8 @@ def run(top_frac=0.2, cost_bps=10, con=None):
         _report("Equal-weight benchmark", bench_rets)
         _regime_report(con, trade_months, strat_rets, bench_rets)
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()
 
 
 def _composite(mom: dict, fundl: dict) -> dict:
@@ -110,14 +115,20 @@ def _composite(mom: dict, fundl: dict) -> dict:
     No parameter fitting — no in-sample / out-of-sample bias on the weights.
     """
     from . import features
+
     z_mom = features.zscore(mom)
-    z_ey  = features.zscore({tk: fundl[tk]["ey"]  for tk in fundl})
-    z_bp  = features.zscore({tk: fundl[tk]["bp"]  for tk in fundl})
+    z_ey = features.zscore({tk: fundl[tk]["ey"] for tk in fundl})
+    z_bp = features.zscore({tk: fundl[tk]["bp"] for tk in fundl})
     z_roe = features.zscore({tk: fundl[tk]["roe"] for tk in fundl})
-    z_gm  = features.zscore({tk: fundl[tk]["gm"]  for tk in fundl})
+    z_gm = features.zscore({tk: fundl[tk]["gm"] for tk in fundl})
     return {
-        tk: (z_mom.get(tk, 0.0) + z_ey.get(tk, 0.0) + z_bp.get(tk, 0.0)
-             + z_roe.get(tk, 0.0) + z_gm.get(tk, 0.0))
+        tk: (
+            z_mom.get(tk, 0.0)
+            + z_ey.get(tk, 0.0)
+            + z_bp.get(tk, 0.0)
+            + z_roe.get(tk, 0.0)
+            + z_gm.get(tk, 0.0)
+        )
         for tk in mom
     }
 
@@ -126,6 +137,7 @@ def _regime_report(con, trade_months: list, strat_rets: list, bench_rets: list) 
     """Performance breakdown by macro regime (silent if no FRED macro data loaded)."""
     try:
         from .sources import fred
+
         labels = fred.regime_series(con, trade_months)
     except Exception:
         return
@@ -133,7 +145,7 @@ def _regime_report(con, trade_months: list, strat_rets: list, bench_rets: list) 
         return
 
     by: dict[str, dict] = {}
-    for m, sr, br in zip(trade_months, strat_rets, bench_rets):
+    for m, sr, br in zip(trade_months, strat_rets, bench_rets, strict=False):
         lbl = labels.get(m, "unknown")
         by.setdefault(lbl, {"s": [], "b": []})
         by[lbl]["s"].append(sr)
@@ -151,9 +163,11 @@ def _regime_report(con, trade_months: list, strat_rets: list, bench_rets: list) 
         sharpe = sm / sd * math.sqrt(12) if sd > 0 else 0.0
         s_ann = (1 + sm) ** 12 - 1
         b_ann = (1 + bm) ** 12 - 1
-        print(f"    {lbl:<12} ({n:>3}m): "
-              f"strat {s_ann*100:+.1f}%/yr  bench {b_ann*100:+.1f}%/yr  "
-              f"alpha {(s_ann-b_ann)*100:+.1f}%  Sharpe {sharpe:.2f}")
+        print(
+            f"    {lbl:<12} ({n:>3}m): "
+            f"strat {s_ann * 100:+.1f}%/yr  bench {b_ann * 100:+.1f}%/yr  "
+            f"alpha {(s_ann - b_ann) * 100:+.1f}%  Sharpe {sharpe:.2f}"
+        )
 
 
 def _period_report(name: str, months: list, rets: list, period_years: int = 5) -> None:
@@ -161,12 +175,12 @@ def _period_report(name: str, months: list, rets: list, period_years: int = 5) -
     chunk = period_years * 12
     rows = []
     for i in range(0, len(months), chunk):
-        ms, rs = months[i:i + chunk], rets[i:i + chunk]
+        ms, rs = months[i : i + chunk], rets[i : i + chunk]
         if len(rs) < 12:
             continue
         eq = 1.0
         for r in rs:
-            eq *= (1 + r)
+            eq *= 1 + r
         n = len(rs)
         cagr = eq ** (12 / n) - 1
         mean = sum(rs) / n
@@ -177,7 +191,7 @@ def _period_report(name: str, months: list, rets: list, period_years: int = 5) -
     if rows:
         print(f"\n  {name} — {period_years}-year periods:")
         for lbl, n, cagr, sharpe in rows:
-            print(f"    {lbl} ({n}m): CAGR {cagr*100:+.1f}%  Sharpe {sharpe:.2f}")
+            print(f"    {lbl} ({n}m): CAGR {cagr * 100:+.1f}%  Sharpe {sharpe:.2f}")
 
 
 def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None:
@@ -192,13 +206,15 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
     without EDGAR data contribute neutral z-scores — momentum still applies to them.
     """
     from . import features as _ft
+
     owns = con is None
     con = con or connect()
     try:
         panel = _month_end_panel(con)
         months = sorted(panel)
         if len(months) < 26:
-            print("[multifactor] not enough price history"); return
+            print("[multifactor] not enough price history")
+            return
 
         tk_cik = _ft.ticker_cik_map()
         members = _membership_fn(con)
@@ -206,16 +222,18 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
         all_tickers = {tk for m in panel.values() for tk in m}
         try:
             n_edgar = sum(
-                1 for tk in all_tickers
-                if tk_cik.get(tk) and con.execute(
-                    "SELECT 1 FROM fundamentals WHERE cik = ? LIMIT 1", [tk_cik[tk]]
-                ).fetchone()
+                1
+                for tk in all_tickers
+                if tk_cik.get(tk)
+                and con.execute("SELECT 1 FROM fundamentals WHERE cik = ? LIMIT 1", [tk_cik[tk]]).fetchone()
             )
         except Exception:
             n_edgar = 0
 
-        print(f"[multifactor] factors: mom + EY + B/P + ROE + GM  "
-              f"({n_edgar}/{len(all_tickers)} tickers have EDGAR data)")
+        print(
+            f"[multifactor] factors: mom + EY + B/P + ROE + GM  "
+            f"({n_edgar}/{len(all_tickers)} tickers have EDGAR data)"
+        )
         if members:
             print("[multifactor] universe: survivorship-free PIT index membership")
         else:
@@ -228,8 +246,7 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
             p_t, p_n = panel[t], panel[t_next]
             p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
 
-            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
-                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1 for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
             if members is not None:
                 inx = members(t)
                 mom = {tk: v for tk, v in mom.items() if tk in inx}
@@ -252,21 +269,25 @@ def run_multifactor(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> None
             bench_rets.append(sum(bench) / len(bench))
             trade_months.append(t)
 
-        _report(f"Multi-factor composite (top {top_frac*100:.0f}%)", strat_rets)
+        _report(f"Multi-factor composite (top {top_frac * 100:.0f}%)", strat_rets)
         _report("Equal-weight benchmark", bench_rets)
-        _period_report(f"Multi-factor composite (top {top_frac*100:.0f}%)", trade_months, strat_rets)
+        _period_report(f"Multi-factor composite (top {top_frac * 100:.0f}%)", trade_months, strat_rets)
         _regime_report(con, trade_months, strat_rets, bench_rets)
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()
 
 
 def _report(name, rets):
     if not rets:
-        print(f"  {name}: no trades"); return
+        print(f"  {name}: no trades")
+        return
     metrics = _compute_metrics(rets)
-    print(f"  {name}: {metrics['n_months']} months ({metrics['years']:.1f}y) | "
-          f"total x{metrics['total_return']:.2f} | CAGR {metrics['cagr']*100:.1f}% "
-          f"| Sharpe {metrics['sharpe']:.2f} | maxDD {metrics['max_drawdown']*100:.1f}%")
+    print(
+        f"  {name}: {metrics['n_months']} months ({metrics['years']:.1f}y) | "
+        f"total x{metrics['total_return']:.2f} | CAGR {metrics['cagr'] * 100:.1f}% "
+        f"| Sharpe {metrics['sharpe']:.2f} | maxDD {metrics['max_drawdown'] * 100:.1f}%"
+    )
 
 
 def _compute_metrics(rets: list[float]) -> dict:
@@ -276,14 +297,21 @@ def _compute_metrics(rets: list[float]) -> dict:
         {n_months, years, total_return, cagr, sharpe, max_drawdown, volatility}
     """
     if not rets:
-        return {"n_months": 0, "years": 0, "total_return": 1.0,
-                "cagr": 0, "sharpe": 0, "max_drawdown": 0, "volatility": 0}
+        return {
+            "n_months": 0,
+            "years": 0,
+            "total_return": 1.0,
+            "cagr": 0,
+            "sharpe": 0,
+            "max_drawdown": 0,
+            "volatility": 0,
+        }
 
     n = len(rets)
     eq = 1.0
     curve = []
     for r in rets:
-        eq *= (1 + r)
+        eq *= 1 + r
         curve.append(eq)
 
     yrs = n / 12
@@ -313,14 +341,12 @@ def _compute_metrics(rets: list[float]) -> dict:
 # ── Programmatic API (returns dicts, used by the Hermes backtest gate) ──────
 
 
-def run_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
-                     con=None) -> dict:
+def run_programmatic(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> dict:
     """Programmatic version of ``run()`` that returns a metrics dict.
 
     Same logic as ``run()`` but returns ``{strategy: metrics, benchmark: metrics,
     regime_breakdown: {...}}`` instead of printing to stdout.
     """
-    from . import warehouse as _wh
 
     owns = con is None
     con = con or connect()
@@ -338,8 +364,7 @@ def run_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
             p_t, p_n = panel[t], panel[t_next]
             p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
 
-            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
-                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1 for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
             if members is not None:
                 inx = members(t)
                 mom = {tk: v for tk, v in mom.items() if tk in inx}
@@ -365,11 +390,9 @@ def run_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
             con.close()
 
 
-def run_multifactor_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
-                                  con=None) -> dict:
+def run_multifactor_programmatic(top_frac: float = 0.2, cost_bps: int = 10, con=None) -> dict:
     """Programmatic version of ``run_multifactor()`` that returns a metrics dict."""
     from . import features as _ft
-    from . import warehouse as _wh
 
     owns = con is None
     con = con or connect()
@@ -388,8 +411,7 @@ def run_multifactor_programmatic(top_frac: float = 0.2, cost_bps: int = 10,
             p_t, p_n = panel[t], panel[t_next]
             p_lag1, p_lag13 = panel[months[i - 1]], panel[months[i - 13]]
 
-            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1
-                   for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
+            mom = {tk: p_lag1[tk] / p_lag13[tk] - 1 for tk in p_lag1 if tk in p_lag13 and p_lag13[tk]}
             if members is not None:
                 inx = members(t)
                 mom = {tk: v for tk, v in mom.items() if tk in inx}

@@ -50,6 +50,7 @@ def test_rank_missing_index_membership(con, env):
     seed.seed_edgar_multi()
     seed.seed_prices_multi()
     from numeraire import warehouse
+
     warehouse.build(con)
     result = signals.rank(asof="2025-06-01", con=con)
     assert len(result) > 0

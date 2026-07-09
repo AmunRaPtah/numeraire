@@ -47,10 +47,15 @@ def test_zscore_all_identical():
 def test_ticker_cik_map_mocked(monkeypatch):
     """ticker_cik_map() without network — patch _tickers()."""
     from numeraire.sources import edgar
-    monkeypatch.setattr(edgar, "_tickers", lambda: {
-        "0": {"ticker": "AAPL", "cik_str": 320193},
-        "1": {"ticker": "MSFT", "cik_str": 789019},
-    })
+
+    monkeypatch.setattr(
+        edgar,
+        "_tickers",
+        lambda: {
+            "0": {"ticker": "AAPL", "cik_str": 320193},
+            "1": {"ticker": "MSFT", "cik_str": 789019},
+        },
+    )
     m = features.ticker_cik_map()
     assert m["AAPL"] == 320193
     assert m["MSFT"] == 789019

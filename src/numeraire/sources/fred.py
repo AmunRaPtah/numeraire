@@ -33,8 +33,7 @@ import csv
 import os
 from bisect import bisect_right
 from datetime import date as _date
-from datetime import datetime, timezone
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 
 from .. import config, net
@@ -48,14 +47,14 @@ _KEYLESS_BASE = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 # for PIT so backtests don't use information they wouldn't have had.
 SERIES: dict[str, tuple[str, int]] = {
     # Core regime series
-    "DFF":           ("Federal Funds Rate (%)",      0),
-    "T10Y2Y":        ("10Y-2Y Yield Spread (%)",     0),
-    "BAMLH0A0HYM2":  ("US HY Credit Spread OAS (%)", 1),
-    "VIXCLS":        ("CBOE VIX",                    0),
-    "USREC":         ("NBER Recession (0/1)",         180),
+    "DFF": ("Federal Funds Rate (%)", 0),
+    "T10Y2Y": ("10Y-2Y Yield Spread (%)", 0),
+    "BAMLH0A0HYM2": ("US HY Credit Spread OAS (%)", 1),
+    "VIXCLS": ("CBOE VIX", 0),
+    "USREC": ("NBER Recession (0/1)", 180),
     # Hermes briefing series
-    "UNRATE":        ("Civilian Unemployment Rate (%)", 1),
-    "CPIAUCSL":      ("Consumer Price Index (CPI)",      2),
+    "UNRATE": ("Civilian Unemployment Rate (%)", 1),
+    "CPIAUCSL": ("Consumer Price Index (CPI)", 2),
 }
 
 _KEY = ("series_id", "event_date")
@@ -69,8 +68,10 @@ def _fetch_keyed(series_id: str, api_key: str) -> list[dict]:
     """Fetch via the FRED API (requires a free API key)."""
     fetched = datetime.now(timezone.utc).isoformat()
     lag = SERIES.get(series_id, ("", 0))[1]
-    url = (f"{_KEYED_BASE}?series_id={series_id}&api_key={api_key}"
-           "&file_type=json&sort_order=asc&observation_start=1950-01-01")
+    url = (
+        f"{_KEYED_BASE}?series_id={series_id}&api_key={api_key}"
+        "&file_type=json&sort_order=asc&observation_start=1950-01-01"
+    )
     try:
         data = net.get_json(url, timeout=30)
     except net.NetworkError as e:
@@ -87,8 +88,15 @@ def _fetch_keyed(series_id: str, api_key: str) -> list[dict]:
             continue
         ed = obs["date"]
         kd = (_date.fromisoformat(ed) + timedelta(days=lag)).isoformat() if lag else ed
-        rows.append({"series_id": series_id, "event_date": ed,
-                     "knowledge_date": kd, "val": val, "fetched_at": fetched})
+        rows.append(
+            {
+                "series_id": series_id,
+                "event_date": ed,
+                "knowledge_date": kd,
+                "val": val,
+                "fetched_at": fetched,
+            }
+        )
     return rows
 
 
@@ -118,8 +126,15 @@ def _fetch_keyless(series_id: str) -> list[dict]:
                 continue
             ed = row[0]
             kd = (_date.fromisoformat(ed) + timedelta(days=lag)).isoformat() if lag else ed
-            rows.append({"series_id": series_id, "event_date": ed,
-                         "knowledge_date": kd, "val": val, "fetched_at": fetched})
+            rows.append(
+                {
+                    "series_id": series_id,
+                    "event_date": ed,
+                    "knowledge_date": kd,
+                    "val": val,
+                    "fetched_at": fetched,
+                }
+            )
     return rows
 
 
@@ -150,17 +165,21 @@ def ingest(series_ids: list[str] | None = None) -> dict[str, tuple[int, int]]:
 
 # ── PIT lookups ───────────────────────────────────────────────────────────────
 
+
 def _pit_val(con, series_id: str, asof: str) -> float | None:
     """Latest known value of series_id as of asof (PIT: knowledge_date <= asof)."""
     try:
-        row = con.execute("""
+        row = con.execute(
+            """
             SELECT val FROM macro
             WHERE series_id = ?
               AND knowledge_date IS NOT NULL
               AND knowledge_date <= CAST(? AS DATE)
             ORDER BY knowledge_date DESC, event_date DESC
             LIMIT 1
-        """, [series_id, asof]).fetchone()
+        """,
+            [series_id, asof],
+        ).fetchone()
         return float(row[0]) if row else None
     except Exception:
         return None
@@ -171,17 +190,20 @@ def _pit_series_bulk(con, series_id: str, months: list) -> dict:
     total for 5 series, regardless of how many backtest months there are).
     """
     try:
-        rows = con.execute("""
+        rows = con.execute(
+            """
             SELECT knowledge_date, val
             FROM macro
             WHERE series_id = ? AND knowledge_date IS NOT NULL
             ORDER BY knowledge_date, event_date DESC
-        """, [series_id]).fetchall()
+        """,
+            [series_id],
+        ).fetchall()
     except Exception:
         return {m: None for m in months}
     if not rows:
         return {m: None for m in months}
-    kds = [r[0] for r in rows]   # datetime.date objects from DuckDB
+    kds = [r[0] for r in rows]  # datetime.date objects from DuckDB
     vals = [float(r[1]) for r in rows]
     out = {}
     for m in months:
@@ -194,12 +216,15 @@ def _pit_series_bulk(con, series_id: str, months: list) -> dict:
 def latest_value(con, series_id: str) -> float | None:
     """Return the most recent value for a series (no PIT filter — live query)."""
     try:
-        row = con.execute("""
+        row = con.execute(
+            """
             SELECT val FROM macro
             WHERE series_id = ?
             ORDER BY event_date DESC
             LIMIT 1
-        """, [series_id]).fetchone()
+        """,
+            [series_id],
+        ).fetchone()
         return float(row[0]) if row else None
     except Exception:
         return None
@@ -208,12 +233,15 @@ def latest_value(con, series_id: str) -> float | None:
 def latest_with_date(con, series_id: str) -> tuple[str, float]:
     """Return (event_date, value) for the most recent observation."""
     try:
-        row = con.execute("""
+        row = con.execute(
+            """
             SELECT event_date, val FROM macro
             WHERE series_id = ?
             ORDER BY event_date DESC
             LIMIT 1
-        """, [series_id]).fetchone()
+        """,
+            [series_id],
+        ).fetchone()
         if row:
             return (str(row[0]), float(row[1]))
     except Exception:
@@ -227,7 +255,13 @@ def macro_snapshot(con, series_ids: list[str] | None = None) -> dict:
     Used by Hermes agent_loop to inject macro context into LLM prompts.
     """
     targets = series_ids or [
-        "DFF", "T10Y2Y", "BAMLH0A0HYM2", "VIXCLS", "UNRATE", "CPIAUCSL", "USREC",
+        "DFF",
+        "T10Y2Y",
+        "BAMLH0A0HYM2",
+        "VIXCLS",
+        "UNRATE",
+        "CPIAUCSL",
+        "USREC",
     ]
     out = {}
     for sid in targets:
@@ -242,12 +276,12 @@ def macro_snapshot(con, series_ids: list[str] | None = None) -> dict:
 # ── Regime classification ─────────────────────────────────────────────────────
 
 _LABELS = {
-    "recession":  "📉 RECESSION",
-    "risk_off":   "⚠️  RISK-OFF",
+    "recession": "📉 RECESSION",
+    "risk_off": "⚠️  RISK-OFF",
     "late_cycle": "🕐 LATE-CYCLE",
-    "expansion":  "🟢 EXPANSION",
-    "recovery":   "🔄 RECOVERY",
-    "unknown":    "❓ UNKNOWN (no macro data — run `numeraire fred`)",
+    "expansion": "🟢 EXPANSION",
+    "recovery": "🔄 RECOVERY",
+    "unknown": "❓ UNKNOWN (no macro data — run `numeraire fred`)",
 }
 
 
@@ -258,9 +292,7 @@ def _classify(fed, curve, hys, vix, rec) -> str:
         return "risk_off"
     if curve is not None and curve < 0.0:
         return "late_cycle"
-    if (curve is not None and curve > 0.0
-            and hys is not None and hys < 4.0
-            and vix is not None and vix < 20.0):
+    if curve is not None and curve > 0.0 and hys is not None and hys < 4.0 and vix is not None and vix < 20.0:
         return "expansion"
     if any(v is None for v in (fed, curve, hys, vix, rec)):
         return "unknown"
@@ -279,14 +311,22 @@ def regime(con, asof: str | None = None) -> dict:
       unknown    — macro table empty or no data for asof
     """
     asof = asof or _date.today().isoformat()
-    fed   = _pit_val(con, "DFF",           asof)
-    curve = _pit_val(con, "T10Y2Y",        asof)
-    hys   = _pit_val(con, "BAMLH0A0HYM2", asof)
-    vix   = _pit_val(con, "VIXCLS",        asof)
-    rec   = _pit_val(con, "USREC",         asof)
+    fed = _pit_val(con, "DFF", asof)
+    curve = _pit_val(con, "T10Y2Y", asof)
+    hys = _pit_val(con, "BAMLH0A0HYM2", asof)
+    vix = _pit_val(con, "VIXCLS", asof)
+    rec = _pit_val(con, "USREC", asof)
     label = _classify(fed, curve, hys, vix, rec)
-    return {"asof": asof, "fed_rate": fed, "curve": curve, "hy_spread": hys,
-            "vix": vix, "recession": rec, "label": label, "display": _LABELS[label]}
+    return {
+        "asof": asof,
+        "fed_rate": fed,
+        "curve": curve,
+        "hy_spread": hys,
+        "vix": vix,
+        "recession": rec,
+        "label": label,
+        "display": _LABELS[label],
+    }
 
 
 def regime_series(con, months: list) -> dict:
@@ -294,13 +334,11 @@ def regime_series(con, months: list) -> dict:
 
     Returns {month: label_str} — 5 SQL queries total regardless of len(months).
     """
-    fed_s   = _pit_series_bulk(con, "DFF",           months)
-    curve_s = _pit_series_bulk(con, "T10Y2Y",        months)
-    hys_s   = _pit_series_bulk(con, "BAMLH0A0HYM2", months)
-    vix_s   = _pit_series_bulk(con, "VIXCLS",        months)
-    rec_s   = _pit_series_bulk(con, "USREC",         months)
+    fed_s = _pit_series_bulk(con, "DFF", months)
+    curve_s = _pit_series_bulk(con, "T10Y2Y", months)
+    hys_s = _pit_series_bulk(con, "BAMLH0A0HYM2", months)
+    vix_s = _pit_series_bulk(con, "VIXCLS", months)
+    rec_s = _pit_series_bulk(con, "USREC", months)
     return {
-        m: _classify(fed_s.get(m), curve_s.get(m), hys_s.get(m),
-                     vix_s.get(m), rec_s.get(m))
-        for m in months
+        m: _classify(fed_s.get(m), curve_s.get(m), hys_s.get(m), vix_s.get(m), rec_s.get(m)) for m in months
     }

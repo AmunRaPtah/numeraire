@@ -11,6 +11,7 @@ def test_regime_classification_expansion(con, env):
     """Expansion regime when data is loaded."""
     seed.seed_macro()
     from numeraire import warehouse
+
     warehouse.build(con)
     result = fred.regime(con, "2024-06-01")
     assert result["label"] != "unknown"
@@ -27,6 +28,7 @@ def test_regime_series_structure(con, env):
     """regime_series() returns dict of month->label."""
     seed.seed_macro()
     from numeraire import warehouse
+
     warehouse.build(con)
     months = ["2024-01-01", "2024-06-01", "2025-01-01"]
     result = fred.regime_series(con, months)
@@ -38,15 +40,26 @@ def test_regime_series_structure(con, env):
 def test_ingest(monkeypatch, env):
     """ingest() with mocked FRED API returns >0."""
     monkeypatch.setattr(fred, "_api_key", lambda: "test_key")
-    monkeypatch.setattr(fred, "_fetch",
-                        lambda sid: [
-                            {"series_id": sid, "event_date": "2024-01-01",
-                             "knowledge_date": "2024-01-01", "val": 5.5,
-                             "fetched_at": "2024-01-01T00:00:00"},
-                            {"series_id": sid, "event_date": "2024-06-01",
-                             "knowledge_date": "2024-06-01", "val": 5.25,
-                             "fetched_at": "2024-06-01T00:00:00"},
-                        ])
+    monkeypatch.setattr(
+        fred,
+        "_fetch",
+        lambda sid: [
+            {
+                "series_id": sid,
+                "event_date": "2024-01-01",
+                "knowledge_date": "2024-01-01",
+                "val": 5.5,
+                "fetched_at": "2024-01-01T00:00:00",
+            },
+            {
+                "series_id": sid,
+                "event_date": "2024-06-01",
+                "knowledge_date": "2024-06-01",
+                "val": 5.25,
+                "fetched_at": "2024-06-01T00:00:00",
+            },
+        ],
+    )
     result = fred.ingest(series_ids=["DFF"])
     assert result["DFF"][0] > 0
 
@@ -56,6 +69,7 @@ def test_regime_recession(con, env):
     # seed_macro includes 2020-Q2 as recession (USREC=1, knowledge_date +180d)
     seed.seed_macro()
     from numeraire import warehouse
+
     warehouse.build(con)
     # as-of 2021-01-01 should see the recession (knowledge_date=2020-10-01)
     result = fred.regime(con, "2021-01-01")

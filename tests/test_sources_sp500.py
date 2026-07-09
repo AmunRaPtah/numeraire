@@ -36,7 +36,9 @@ def test_parse_date_extracted():
 
 
 def test_find_tables_simple():
-    html = "<table><tr><th>Symbol</th><th>Date Added</th></tr><tr><td>AAPL</td><td>1982-01-01</td></tr></table>"
+    html = (
+        "<table><tr><th>Symbol</th><th>Date Added</th></tr><tr><td>AAPL</td><td>1982-01-01</td></tr></table>"
+    )
     tables = sp500._find_tables(html)
     assert len(tables) == 1
     assert len(tables[0]) == 2  # header + 1 data row
@@ -45,10 +47,10 @@ def test_find_tables_simple():
 def test_build_membership_current():
     """Test that current members are extracted."""
     html = (
-        '<table><tr><th>Symbol</th><th>Security</th><th>Date added</th></tr>'
-        '<tr><td>AAPL</td><td>Apple Inc.</td><td>1982-01-01</td></tr>'
-        '<tr><td>MSFT</td><td>Microsoft Corp.</td><td>1994-06-01</td></tr>'
-        '</table>'
+        "<table><tr><th>Symbol</th><th>Security</th><th>Date added</th></tr>"
+        "<tr><td>AAPL</td><td>Apple Inc.</td><td>1982-01-01</td></tr>"
+        "<tr><td>MSFT</td><td>Microsoft Corp.</td><td>1994-06-01</td></tr>"
+        "</table>"
     )
     tables = sp500._find_tables(html)
     rows = sp500._build_membership(tables)

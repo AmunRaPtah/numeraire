@@ -24,6 +24,7 @@ def test_merge_dedup(tmp_path):
     assert len(lines) == 2
     # id=1 should be updated to latest
     import json
+
     assert json.loads(lines[0])["v"] == "updated"
 
 

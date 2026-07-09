@@ -20,6 +20,7 @@ from datetime import timedelta
 def ticker_cik_map() -> dict[str, int]:
     """ticker (uppercase) -> CIK, from SEC's company_tickers.json."""
     from .sources import edgar
+
     return {
         r["ticker"].upper(): int(r["cik_str"])
         for r in edgar._tickers().values()
@@ -29,7 +30,7 @@ def ticker_cik_map() -> dict[str, int]:
 
 def _to_date_str(d) -> str:
     if isinstance(d, _date):
-        return d.isoformat()[:10]   # [:10] strips time from datetime subclass
+        return d.isoformat()[:10]  # [:10] strips time from datetime subclass
     return str(d)[:10]
 
 
@@ -50,7 +51,8 @@ def _pit_tag(con, tag: str, unit: str, asof: str, fp: str | None) -> dict[int, f
     cutoff = _3yr_cutoff(asof)
     try:
         if fp:
-            rows = con.execute("""
+            rows = con.execute(
+                """
                 SELECT cik, val FROM (
                     SELECT cik, val,
                         row_number() OVER (
@@ -62,9 +64,12 @@ def _pit_tag(con, tag: str, unit: str, asof: str, fp: str | None) -> dict[int, f
                       AND knowledge_date <= CAST(? AS DATE)
                       AND event_date    >= CAST(? AS DATE)
                 ) WHERE rn = 1
-            """, [tag, unit, fp, asof, cutoff]).fetchall()
+            """,
+                [tag, unit, fp, asof, cutoff],
+            ).fetchall()
         else:
-            rows = con.execute("""
+            rows = con.execute(
+                """
                 SELECT cik, val FROM (
                     SELECT cik, val,
                         row_number() OVER (
@@ -76,7 +81,9 @@ def _pit_tag(con, tag: str, unit: str, asof: str, fp: str | None) -> dict[int, f
                       AND knowledge_date <= CAST(? AS DATE)
                       AND event_date    >= CAST(? AS DATE)
                 ) WHERE rn = 1
-            """, [tag, unit, asof, cutoff]).fetchall()
+            """,
+                [tag, unit, asof, cutoff],
+            ).fetchall()
     except Exception:
         return {}
     return {int(cik): float(val) for cik, val in rows if val is not None}
@@ -109,10 +116,10 @@ def compute(
     Market cap = price × shares_outstanding (both PIT).
     """
     asof_s = _to_date_str(asof)
-    ni = _pit_tag(con, "NetIncomeLoss",               "USD",    asof_s, "FY")
-    be = _pit_tag(con, "StockholdersEquity",           "USD",    asof_s, "FY")
-    gp = _pit_tag(con, "GrossProfit",                  "USD",    asof_s, "FY")
-    rv = _pit_tag(con, "Revenues",                     "USD",    asof_s, "FY")
+    ni = _pit_tag(con, "NetIncomeLoss", "USD", asof_s, "FY")
+    be = _pit_tag(con, "StockholdersEquity", "USD", asof_s, "FY")
+    gp = _pit_tag(con, "GrossProfit", "USD", asof_s, "FY")
+    rv = _pit_tag(con, "Revenues", "USD", asof_s, "FY")
     sh = _pit_tag(con, "CommonStockSharesOutstanding", "shares", asof_s, None)
 
     out: dict[str, dict] = {}
@@ -128,9 +135,9 @@ def compute(
         s = sh.get(cik)
         mktcap = px * s if (s and s > 0) else None
         out[tkr] = {
-            "ey":  n / mktcap if (n is not None and mktcap and mktcap > 0) else None,
-            "bp":  b / mktcap if (b is not None and mktcap and mktcap > 0) else None,
-            "roe": n / b      if (n is not None and b and abs(b) > 1e6)    else None,
-            "gm":  g / r      if (g is not None and r and r > 0)           else None,
+            "ey": n / mktcap if (n is not None and mktcap and mktcap > 0) else None,
+            "bp": b / mktcap if (b is not None and mktcap and mktcap > 0) else None,
+            "roe": n / b if (n is not None and b and abs(b) > 1e6) else None,
+            "gm": g / r if (g is not None and r and r > 0) else None,
         }
     return out

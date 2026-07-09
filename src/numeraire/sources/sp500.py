@@ -39,7 +39,7 @@ class _TableParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.tables: list[list[list[str]]] = []
-        self._depth = 0          # table nesting depth
+        self._depth = 0  # table nesting depth
         self._row: list[str] | None = None
         self._cell: list[str] | None = None
         self._rows: list[list[str]] | None = None
@@ -57,10 +57,12 @@ class _TableParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "table":
             if self._depth == 1 and self._rows is not None:
-                self.tables.append(self._rows); self._rows = None
+                self.tables.append(self._rows)
+                self._rows = None
             self._depth = max(0, self._depth - 1)
         elif self._depth == 1 and tag == "tr" and self._row is not None:
-            self._rows.append(self._row); self._row = None
+            self._rows.append(self._row)
+            self._row = None
         elif self._depth == 1 and tag in ("td", "th") and self._cell is not None:
             self._row.append(re.sub(r"\s+", " ", "".join(self._cell)).strip())
             self._cell = None
@@ -75,6 +77,7 @@ def _parse_date(s: str) -> str | None:
     for fmt in ("%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%d %B %Y"):
         try:
             from datetime import datetime
+
             return datetime.strptime(s, fmt).date().isoformat()
         except ValueError:
             continue
@@ -84,22 +87,33 @@ def _parse_date(s: str) -> str | None:
 
 def _norm_ticker(s: str) -> str:
     # Wikipedia uses BRK.B; Yahoo uses BRK-B. Normalise to Yahoo form.
-    return re.sub(r"[^A-Z0-9.\-]", "", (s or "").upper().split()[0] if s else "").replace(".", "-") if s else ""
+    return (
+        re.sub(r"[^A-Z0-9.\-]", "", (s or "").upper().split()[0] if s else "").replace(".", "-") if s else ""
+    )
 
 
 def _find_tables(html: str):
-    p = _TableParser(); p.feed(html); return p.tables
+    p = _TableParser()
+    p.feed(html)
+    return p.tables
 
 
 def _build_membership(tables) -> list[dict]:
     """Reconstruct [added, removed) intervals from the constituents + changes tables."""
-    members: dict[str, dict] = {}   # ticker -> {added, removed}
+    members: dict[str, dict] = {}  # ticker -> {added, removed}
 
-    def hdr(t): return [c.lower() for c in t[0]] if t else []
+    def hdr(t):
+        return [c.lower() for c in t[0]] if t else []
 
     # --- current constituents: header has "symbol" + "date added" ---
-    cur = next((t for t in tables if t and any("symbol" in c for c in hdr(t))
-                and any("date" in c and "added" in c for c in hdr(t))), None)
+    cur = next(
+        (
+            t
+            for t in tables
+            if t and any("symbol" in c for c in hdr(t)) and any("date" in c and "added" in c for c in hdr(t))
+        ),
+        None,
+    )
     if cur:
         h = hdr(cur)
         i_sym = next(i for i, c in enumerate(h) if "symbol" in c)
@@ -114,8 +128,10 @@ def _build_membership(tables) -> list[dict]:
             members[tk] = {"added": added, "removed": None}
 
     # --- changes log: header has "date" + "added"/"removed" sections ---
-    chg = next((t for t in tables if t and any("date" in c for c in hdr(t))
-                and any("removed" in c for c in hdr(t))), None)
+    chg = next(
+        (t for t in tables if t and any("date" in c for c in hdr(t)) and any("removed" in c for c in hdr(t))),
+        None,
+    )
     if chg:
         # Wikipedia's layout uses colspan/rowspan headers, so the sub-header row
         # (Ticker|Security|Ticker|Security) does NOT index-align with the 6-cell data
@@ -150,8 +166,9 @@ def _build_membership(tables) -> list[dict]:
 
     out = []
     for tk, m in sorted(members.items()):
-        out.append({"index_name": "SP500", "ticker": tk,
-                    "added_date": m["added"], "removed_date": m["removed"]})
+        out.append(
+            {"index_name": "SP500", "ticker": tk, "added_date": m["added"], "removed_date": m["removed"]}
+        )
     return out
 
 
@@ -160,13 +177,14 @@ def ingest() -> tuple[int, int]:
     try:
         html = net.request(WIKI, timeout=40, headers=UA).decode("utf-8", "replace")
     except net.NetworkError as e:
-        print(f"[sp500]   fetch failed: {e}"); return (0, 0)
+        print(f"[sp500]   fetch failed: {e}")
+        return (0, 0)
     rows = _build_membership(_find_tables(html))
     if not rows:
-        print("[sp500]   no membership rows parsed (page layout changed?)"); return (0, 0)
+        print("[sp500]   no membership rows parsed (page layout changed?)")
+        return (0, 0)
     cur = sum(1 for r in rows if r["removed_date"] is None)
     d = config.raw_source_dir("sp500_membership")
     tot, add = merge_jsonl(d / "SP500.jsonl", rows, KEY)
-    print(f"[sp500]   {len(rows)} names ({cur} current, {len(rows)-cur} removed); "
-          f"landed {tot} (+{add})")
+    print(f"[sp500]   {len(rows)} names ({cur} current, {len(rows) - cur} removed); landed {tot} (+{add})")
     return (tot, add)

@@ -9,11 +9,16 @@ from numeraire.sources import edgar
 
 def test_ingest_no_network(monkeypatch, env):
     """ingest() should gracefully handle network errors."""
-    monkeypatch.setattr(edgar, "_tickers", lambda: {
-        "0": {"ticker": "AAPL", "cik_str": 320193, "title": "Apple Inc."},
-    })
-    monkeypatch.setattr(edgar.net, "request",
-                        lambda url, **kw: (_ for _ in ()).throw(edgar.net.NetworkError("fail")))
+    monkeypatch.setattr(
+        edgar,
+        "_tickers",
+        lambda: {
+            "0": {"ticker": "AAPL", "cik_str": 320193, "title": "Apple Inc."},
+        },
+    )
+    monkeypatch.setattr(
+        edgar.net, "request", lambda url, **kw: (_ for _ in ()).throw(edgar.net.NetworkError("fail"))
+    )
     result = edgar.ingest("AAPL")
     assert result == ("", 0, 0)
 
@@ -26,21 +31,30 @@ def test_ingest_success(monkeypatch, env):
             "us-gaap": {
                 "NetIncomeLoss": {
                     "units": {
-                        "USD": [{
-                            "val": 10000000, "end": "2024-01-01",
-                            "accn": "0000320193-24-000001", "filed": "2024-02-01",
-                            "fy": "2024", "fp": "Q1", "form": "10-Q",
-                        }]
+                        "USD": [
+                            {
+                                "val": 10000000,
+                                "end": "2024-01-01",
+                                "accn": "0000320193-24-000001",
+                                "filed": "2024-02-01",
+                                "fy": "2024",
+                                "fp": "Q1",
+                                "form": "10-Q",
+                            }
+                        ]
                     }
                 }
             }
-        }
+        },
     }
-    monkeypatch.setattr(edgar, "_tickers", lambda: {
-        "0": {"ticker": "AAPL", "cik_str": 320193, "title": "Apple Inc."},
-    })
-    monkeypatch.setattr(edgar.net, "request",
-                        lambda url, **kw: json.dumps(mock_data).encode())
+    monkeypatch.setattr(
+        edgar,
+        "_tickers",
+        lambda: {
+            "0": {"ticker": "AAPL", "cik_str": 320193, "title": "Apple Inc."},
+        },
+    )
+    monkeypatch.setattr(edgar.net, "request", lambda url, **kw: json.dumps(mock_data).encode())
     result = edgar.ingest("AAPL")
     path, total, added = result
     assert total > 0
@@ -56,10 +70,14 @@ def test_ingest_unknown_ticker(monkeypatch, env):
 
 
 def test_cik_for(monkeypatch):
-    monkeypatch.setattr(edgar, "_tickers", lambda: {
-        "0": {"ticker": "AAPL", "cik_str": 320193},
-        "1": {"ticker": "MSFT", "cik_str": 789019},
-    })
+    monkeypatch.setattr(
+        edgar,
+        "_tickers",
+        lambda: {
+            "0": {"ticker": "AAPL", "cik_str": 320193},
+            "1": {"ticker": "MSFT", "cik_str": 789019},
+        },
+    )
     assert edgar.cik_for("AAPL") == 320193
     assert edgar.cik_for("msft") == 789019  # case insensitive
     assert edgar.cik_for("JNJ") is None
@@ -82,5 +100,5 @@ def test_tickers_structure(monkeypatch):
     assert result["0"]["ticker"] == "AAPL"
     assert call_count == 1
     # Second call should use cache, not network
-    result2 = edgar._tickers()
+    edgar._tickers()
     assert call_count == 1

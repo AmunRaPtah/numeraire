@@ -11,12 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("NUMERAIRE_DATA_DIR", ROOT / "data"))
-RAW_DIR = DATA_DIR / "raw"                       # landing zone (as-of, immutable)
-WAREHOUSE = DATA_DIR / "warehouse.duckdb"        # bitemporal DuckDB warehouse
+RAW_DIR = DATA_DIR / "raw"  # landing zone (as-of, immutable)
+WAREHOUSE = DATA_DIR / "warehouse.duckdb"  # bitemporal DuckDB warehouse
 
 # SEC requires a descriptive User-Agent with a contact address, or it 403s.
-SEC_USER_AGENT = os.environ.get(
-    "NUMERAIRE_SEC_UA", "numeraire/0.1 (work@supercriticalbooks.com)")
+SEC_USER_AGENT = os.environ.get("NUMERAIRE_SEC_UA", "numeraire/0.1 (work@supercriticalbooks.com)")
 
 
 def ensure_dirs() -> None:

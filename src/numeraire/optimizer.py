@@ -15,14 +15,12 @@ import math
 from datetime import date
 from typing import Any
 
-
 # ── Covariance estimation ───────────────────────────────────────────────────
 
 
 def _returns_series(prices: list[float]) -> list[float]:
     """Compute period-over-period returns from a price series."""
-    return [(prices[i] - prices[i - 1]) / prices[i - 1]
-            for i in range(1, len(prices)) if prices[i - 1] > 0]
+    return [(prices[i] - prices[i - 1]) / prices[i - 1] for i in range(1, len(prices)) if prices[i - 1] > 0]
 
 
 def _mean(vals: list[float]) -> float:
@@ -40,8 +38,9 @@ def _std(vals: list[float]) -> float:
     return math.sqrt(_variance(vals))
 
 
-def _covariance(vals_a: list[float], vals_b: list[float],
-                mean_a: float | None = None, mean_b: float | None = None) -> float:
+def _covariance(
+    vals_a: list[float], vals_b: list[float], mean_a: float | None = None, mean_b: float | None = None
+) -> float:
     """Sample covariance between two lists."""
     if len(vals_a) < 2 or len(vals_b) < 2:
         return 0.0
@@ -51,9 +50,9 @@ def _covariance(vals_a: list[float], vals_b: list[float],
     return sum((vals_a[i] - ma) * (vals_b[i] - mb) for i in range(n)) / (n - 1)
 
 
-def cov_matrix(symbols: list[str] | None = None,
-               lookback_days: int = 252, asof: str | None = None,
-               con=None) -> dict[str, dict[str, float]]:
+def cov_matrix(
+    symbols: list[str] | None = None, lookback_days: int = 252, asof: str | None = None, con=None
+) -> dict[str, dict[str, float]]:
     """Covariance matrix for a set of symbols from Numeraire prices.
 
     Returns {symbol_a: {symbol_b: covariance}} — upper-triangular, symmetric.
@@ -63,18 +62,18 @@ def cov_matrix(symbols: list[str] | None = None,
     owns = con is None
     if con is None:
         from .storage import connect
+
         con = connect()
     try:
         from .warehouse import _load_aux
+
         _load_aux(con)
 
         # Fetch price series
         price_data: dict[str, list[float]] = {}
         candidates = symbols
         if candidates is None:
-            rows = con.execute(
-                "SELECT DISTINCT ticker FROM prices ORDER BY ticker LIMIT 200"
-            ).fetchall()
+            rows = con.execute("SELECT DISTINCT ticker FROM prices ORDER BY ticker LIMIT 200").fetchall()
             candidates = [r[0] for r in rows]
 
         for sym in candidates:
@@ -124,8 +123,7 @@ def cov_matrix(symbols: list[str] | None = None,
 # ── Matrix helpers ──────────────────────────────────────────────────────────
 
 
-def _mat_vec_mul(mat: dict[str, dict[str, float]],
-                 vec: dict[str, float]) -> dict[str, float]:
+def _mat_vec_mul(mat: dict[str, dict[str, float]], vec: dict[str, float]) -> dict[str, float]:
     """Multiply matrix * vector. Matrix and vector indexed by symbol."""
     result: dict[str, float] = {}
     for sa in mat:
@@ -141,8 +139,7 @@ def _vec_dot(a: dict[str, float], b: dict[str, float]) -> float:
     return sum(a.get(k, 0.0) * b.get(k, 0.0) for k in set(a) | set(b))
 
 
-def _portfolio_variance(weights: dict[str, float],
-                        cov: dict[str, dict[str, float]]) -> float:
+def _portfolio_variance(weights: dict[str, float], cov: dict[str, dict[str, float]]) -> float:
     """Compute portfolio variance given weights and covariance matrix."""
     var = 0.0
     for sa in weights:
@@ -154,11 +151,13 @@ def _portfolio_variance(weights: dict[str, float],
 # ── Mean-Variance Optimization ──────────────────────────────────────────────
 
 
-def mean_variance(expected_returns: dict[str, float],
-                  cov: dict[str, dict[str, float]],
-                  risk_free: float = 0.05,
-                  max_weight: float = 0.10,
-                  target_vol: float | None = None) -> dict[str, float]:
+def mean_variance(
+    expected_returns: dict[str, float],
+    cov: dict[str, dict[str, float]],
+    risk_free: float = 0.05,
+    max_weight: float = 0.10,
+    target_vol: float | None = None,
+) -> dict[str, float]:
     """Mean-variance optimal portfolio (Markowitz).
 
     Uses a simple gradient-free approach: samples along the efficient frontier
@@ -239,8 +238,7 @@ def mean_variance(expected_returns: dict[str, float],
 # ── Risk Parity ─────────────────────────────────────────────────────────────
 
 
-def _risk_contribution(weights: dict[str, float],
-                       cov: dict[str, dict[str, float]]) -> dict[str, float]:
+def _risk_contribution(weights: dict[str, float], cov: dict[str, dict[str, float]]) -> dict[str, float]:
     """Compute each asset's marginal risk contribution."""
     p_var = _portfolio_variance(weights, cov)
     if p_var <= 0:
@@ -254,9 +252,9 @@ def _risk_contribution(weights: dict[str, float],
     return contrib
 
 
-def risk_parity(cov: dict[str, dict[str, float]],
-                max_weight: float = 0.10,
-                max_iter: int = 100) -> dict[str, float]:
+def risk_parity(
+    cov: dict[str, dict[str, float]], max_weight: float = 0.10, max_iter: int = 100
+) -> dict[str, float]:
     """Risk parity portfolio (equal risk contribution).
 
     Uses an iterative Newton-like method to find weights where each asset
@@ -312,9 +310,9 @@ def risk_parity(cov: dict[str, dict[str, float]],
 # ── Kelly Criterion ─────────────────────────────────────────────────────────
 
 
-def kelly_criterion(prob_win: float, odds: float,
-                    bankroll: float = 1.0,
-                    fraction: float = 0.25) -> dict[str, float]:
+def kelly_criterion(
+    prob_win: float, odds: float, bankroll: float = 1.0, fraction: float = 0.25
+) -> dict[str, float]:
     """Kelly criterion for position sizing.
 
     Args:
@@ -334,7 +332,9 @@ def kelly_criterion(prob_win: float, odds: float,
     recommended_pct = kelly_pct * fraction
     recommended_bet = bankroll * recommended_pct
 
-    message = "no bet" if kelly_pct <= 0 else "full Kelly" if fraction >= 1.0 else f"{fraction*100:.0f}% Kelly"
+    message = (
+        "no bet" if kelly_pct <= 0 else "full Kelly" if fraction >= 1.0 else f"{fraction * 100:.0f}% Kelly"
+    )
 
     return {
         "recommended_bet": round(recommended_bet, 2),
@@ -348,10 +348,12 @@ def kelly_criterion(prob_win: float, odds: float,
 # ── Efficient Frontier ─────────────────────────────────────────────────────
 
 
-def efficient_frontier(expected_returns: dict[str, float],
-                       cov: dict[str, dict[str, float]],
-                       n_points: int = 20,
-                       max_weight: float = 0.10) -> list[dict[str, Any]]:
+def efficient_frontier(
+    expected_returns: dict[str, float],
+    cov: dict[str, dict[str, float]],
+    n_points: int = 20,
+    max_weight: float = 0.10,
+) -> list[dict[str, Any]]:
     """Compute points along the efficient frontier.
 
     Returns a list of dicts, each representing a portfolio on the frontier:
@@ -407,11 +409,13 @@ def efficient_frontier(expected_returns: dict[str, float],
     for i in range(0, len(frontier), step):
         p = frontier[i]
         sharpe = (p["ret"] - 0.05) / p["vol"] if p["vol"] > 0 else 0
-        result.append({
-            "ret": round(p["ret"], 4),
-            "vol": round(p["vol"], 4),
-            "sharpe": round(sharpe, 4),
-            "weights": p["weights"],
-        })
+        result.append(
+            {
+                "ret": round(p["ret"], 4),
+                "vol": round(p["vol"], 4),
+                "sharpe": round(sharpe, 4),
+                "weights": p["weights"],
+            }
+        )
 
     return result

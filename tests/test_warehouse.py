@@ -55,7 +55,9 @@ def test_as_of_point_in_time(con, env):
     for row in result:
         rd = row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0])
         if "2024-06-30" in rd and "10-Q" in str(row[3]) and "RESTATED" not in str(row[4]):
-            assert row[1] == 13_200_000, f"Q2 2024 NI as-of 2024-09-01: expected 13.2M (original), got {row[1]}"
+            assert row[1] == 13_200_000, (
+                f"Q2 2024 NI as-of 2024-09-01: expected 13.2M (original), got {row[1]}"
+            )
 
 
 def test_as_of_sees_restatement_after_date(con, env):

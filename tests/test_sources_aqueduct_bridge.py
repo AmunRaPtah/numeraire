@@ -7,9 +7,13 @@ from numeraire.sources import aqueduct_bridge
 
 def test_company_title(monkeypatch):
     """_company_title should look up the ticker from EDGAR tickers."""
-    monkeypatch.setattr(aqueduct_bridge.edgar, "_tickers", lambda: {
-        "0": {"ticker": "ABBV", "cik_str": 1800, "title": "AbbVie Inc."},
-    })
+    monkeypatch.setattr(
+        aqueduct_bridge.edgar,
+        "_tickers",
+        lambda: {
+            "0": {"ticker": "ABBV", "cik_str": 1800, "title": "AbbVie Inc."},
+        },
+    )
     result = aqueduct_bridge._company_title("ABBV")
     assert result == "AbbVie Inc."
 
@@ -52,11 +56,15 @@ def test_ingest_no_ticker(monkeypatch):
 
 def test_ingest_no_title(monkeypatch):
     """Ticker with no title returns empty."""
-    monkeypatch.setattr(aqueduct_bridge.edgar, "_tickers", lambda: {
-        "0": {"ticker": "XOM", "cik_str": 34088, "title": "Exxon"}})
+    monkeypatch.setattr(
+        aqueduct_bridge.edgar,
+        "_tickers",
+        lambda: {"0": {"ticker": "XOM", "cik_str": 34088, "title": "Exxon"}},
+    )
     # No match token for 'Exxon' (single token, no stop words removed)
     # Actually 'exxon' should match. Let's test with a short one:
-    monkeypatch.setattr(aqueduct_bridge.edgar, "_tickers", lambda: {
-        "0": {"ticker": "FOO", "cik_str": 1, "title": "AB Co"}})
+    monkeypatch.setattr(
+        aqueduct_bridge.edgar, "_tickers", lambda: {"0": {"ticker": "FOO", "cik_str": 1, "title": "AB Co"}}
+    )
     result = aqueduct_bridge.ingest("FOO")
     assert result == ("", 0, 0)

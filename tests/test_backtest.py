@@ -14,11 +14,12 @@ def test_run_short_history_skips_gracefully(con, env):
     seed.seed_edgar_multi()
     seed.seed_prices_multi()
     from numeraire import warehouse
+
     warehouse.build(con)
 
     # Remove most of the price history for a short test
     con.execute("DELETE FROM prices WHERE event_date < '2024-01-01'")
-    result = backtest.run(con=con)
+    backtest.run(con=con)
     # Should not raise; output goes to stdout
 
 

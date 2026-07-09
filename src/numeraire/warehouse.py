@@ -14,6 +14,7 @@ from .storage import connect
 
 def _has_files(glob_pattern: str) -> bool:
     import glob
+
     return bool(glob.glob(glob_pattern))
 
 
@@ -42,54 +43,78 @@ def build(con=None) -> int:
         _load_aux(con)
         return n
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()
 
 
 def _load_aux(con):
     """Load the other landed streams (prices, corporate_actions, pipeline) if present."""
     import glob
+
     specs = {
-        "prices": ("prices", 'ticker, TRY_CAST("date" AS DATE) AS event_date, '
-                   'CAST("open" AS DOUBLE) AS "open", CAST("high" AS DOUBLE) AS "high", '
-                   'CAST("low" AS DOUBLE) AS "low", CAST("close" AS DOUBLE) AS "close", '
-                   'CAST(adjclose AS DOUBLE) AS adjclose, CAST("volume" AS BIGINT) AS "volume", '
-                   'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
-        "corporate_actions": ("corporate_actions", 'ticker, TRY_CAST("date" AS DATE) AS event_date, '
-                              '"type", CAST("value" AS VARCHAR) AS action_value'),
-        "pipeline": ("pipeline", "ticker, cik, nct_id, trial_title, status, phases, conditions, "
-                     "interventions, start_date, completion_date, lead_sponsor"),
-        "index_membership": ("sp500_membership", 'index_name, ticker, '
-                             'TRY_CAST(added_date AS DATE) AS added_date, '
-                             'TRY_CAST(removed_date AS DATE) AS removed_date'),
-        "security_master": ("security_master", "cik, ticker, name, name_norm, "
-                            "TRY_CAST(fetched_at AS TIMESTAMP) AS fetched_at"),
-        "macro": ("fred", 'series_id, '
-                  'TRY_CAST(event_date AS DATE) AS event_date, '
-                  'TRY_CAST(knowledge_date AS DATE) AS knowledge_date, '
-                  'CAST(val AS DOUBLE) AS val, '
-                  'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
-        "estimates": ("estimates", 'ticker, period, TRY_CAST(fetched_date AS DATE) AS fetched_date, '
-                      'CAST(avg_estimate AS DOUBLE) AS avg_estimate, '
-                      'CAST(num_analysts AS INTEGER) AS num_analysts, '
-                      'CAST(growth AS DOUBLE) AS growth, '
-                      'CAST(eps_trend_current AS DOUBLE) AS eps_trend_current, '
-                      'CAST(eps_trend_7d_ago AS DOUBLE) AS eps_trend_7d_ago, '
-                      'CAST(eps_trend_30d_ago AS DOUBLE) AS eps_trend_30d_ago, '
-                      'CAST(eps_trend_60d_ago AS DOUBLE) AS eps_trend_60d_ago, '
-                      'CAST(eps_trend_90d_ago AS DOUBLE) AS eps_trend_90d_ago, '
-                      'CAST(revisions_up_7d AS INTEGER) AS revisions_up_7d, '
-                      'CAST(revisions_down_7d AS INTEGER) AS revisions_down_7d, '
-                      'CAST(revisions_up_30d AS INTEGER) AS revisions_up_30d, '
-                      'CAST(revisions_down_30d AS INTEGER) AS revisions_down_30d, '
-                      'TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts'),
+        "prices": (
+            "prices",
+            'ticker, TRY_CAST("date" AS DATE) AS event_date, '
+            'CAST("open" AS DOUBLE) AS "open", CAST("high" AS DOUBLE) AS "high", '
+            'CAST("low" AS DOUBLE) AS "low", CAST("close" AS DOUBLE) AS "close", '
+            'CAST(adjclose AS DOUBLE) AS adjclose, CAST("volume" AS BIGINT) AS "volume", '
+            "TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts",
+        ),
+        "corporate_actions": (
+            "corporate_actions",
+            'ticker, TRY_CAST("date" AS DATE) AS event_date, '
+            '"type", CAST("value" AS VARCHAR) AS action_value',
+        ),
+        "pipeline": (
+            "pipeline",
+            "ticker, cik, nct_id, trial_title, status, phases, conditions, "
+            "interventions, start_date, completion_date, lead_sponsor",
+        ),
+        "index_membership": (
+            "sp500_membership",
+            "index_name, ticker, "
+            "TRY_CAST(added_date AS DATE) AS added_date, "
+            "TRY_CAST(removed_date AS DATE) AS removed_date",
+        ),
+        "security_master": (
+            "security_master",
+            "cik, ticker, name, name_norm, TRY_CAST(fetched_at AS TIMESTAMP) AS fetched_at",
+        ),
+        "macro": (
+            "fred",
+            "series_id, "
+            "TRY_CAST(event_date AS DATE) AS event_date, "
+            "TRY_CAST(knowledge_date AS DATE) AS knowledge_date, "
+            "CAST(val AS DOUBLE) AS val, "
+            "TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts",
+        ),
+        "estimates": (
+            "estimates",
+            "ticker, period, TRY_CAST(fetched_date AS DATE) AS fetched_date, "
+            "CAST(avg_estimate AS DOUBLE) AS avg_estimate, "
+            "CAST(num_analysts AS INTEGER) AS num_analysts, "
+            "CAST(growth AS DOUBLE) AS growth, "
+            "CAST(eps_trend_current AS DOUBLE) AS eps_trend_current, "
+            "CAST(eps_trend_7d_ago AS DOUBLE) AS eps_trend_7d_ago, "
+            "CAST(eps_trend_30d_ago AS DOUBLE) AS eps_trend_30d_ago, "
+            "CAST(eps_trend_60d_ago AS DOUBLE) AS eps_trend_60d_ago, "
+            "CAST(eps_trend_90d_ago AS DOUBLE) AS eps_trend_90d_ago, "
+            "CAST(revisions_up_7d AS INTEGER) AS revisions_up_7d, "
+            "CAST(revisions_down_7d AS INTEGER) AS revisions_down_7d, "
+            "CAST(revisions_up_30d AS INTEGER) AS revisions_up_30d, "
+            "CAST(revisions_down_30d AS INTEGER) AS revisions_down_30d, "
+            "TRY_CAST(fetched_at AS TIMESTAMP) AS knowledge_ts",
+        ),
     }
     for table, (src, cols) in specs.items():
         pat = str(config.RAW_DIR / src / "*.jsonl")
         if not glob.glob(pat):
             continue
         con.execute(f"DROP TABLE IF EXISTS {table}")
-        con.execute(f"CREATE TABLE {table} AS SELECT {cols} FROM "
-                    f"read_json_auto('{pat}', format='newline_delimited', union_by_name=true)")
+        con.execute(
+            f"CREATE TABLE {table} AS SELECT {cols} FROM "
+            f"read_json_auto('{pat}', format='newline_delimited', union_by_name=true)"
+        )
         n = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
         print(f"[build]   {table}: {n:,} rows")
 
@@ -105,15 +130,22 @@ def members_as_of(asof, index_name="SP500", con=None):
     owns = con is None
     con = con or connect()
     try:
-        return [r[0] for r in con.execute("""
+        return [
+            r[0]
+            for r in con.execute(
+                """
             SELECT ticker FROM index_membership
             WHERE index_name = ?
               AND (added_date  IS NULL OR added_date  <= TRY_CAST(? AS DATE))
               AND (removed_date IS NULL OR removed_date > TRY_CAST(? AS DATE))
             ORDER BY ticker
-        """, [index_name, asof, asof]).fetchall()]
+        """,
+                [index_name, asof, asof],
+            ).fetchall()
+        ]
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()
 
 
 def as_of(cik: int, tag: str, asof: str, unit: str = "USD", con=None):
@@ -125,7 +157,8 @@ def as_of(cik: int, tag: str, asof: str, unit: str = "USD", con=None):
     owns = con is None
     con = con or connect()
     try:
-        return con.execute("""
+        return con.execute(
+            """
             SELECT event_date, val, knowledge_date, form, accn FROM (
               SELECT *, row_number() OVER (
                   PARTITION BY event_date ORDER BY knowledge_date DESC, accn DESC) rn
@@ -133,6 +166,9 @@ def as_of(cik: int, tag: str, asof: str, unit: str = "USD", con=None):
               WHERE cik = ? AND tag = ? AND unit = ?
                 AND knowledge_date IS NOT NULL AND knowledge_date <= TRY_CAST(? AS DATE)
             ) WHERE rn = 1 ORDER BY event_date
-        """, [cik, tag, unit, asof]).fetchall()
+        """,
+            [cik, tag, unit, asof],
+        ).fetchall()
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()

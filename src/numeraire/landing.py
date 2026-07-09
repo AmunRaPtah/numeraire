@@ -21,8 +21,9 @@ def _key(rec: dict, key):
     return rec.get(key)
 
 
-def merge_jsonl(path: Path, records: Iterable[dict],
-                key: str | Sequence[str] | Callable[[dict], object]) -> tuple[int, int]:
+def merge_jsonl(
+    path: Path, records: Iterable[dict], key: str | Sequence[str] | Callable[[dict], object]
+) -> tuple[int, int]:
     """Merge records into JSONL at `path`, de-duplicating by `key`. Returns (total, added)."""
     merged: dict[object, dict] = {}
     if path.exists():

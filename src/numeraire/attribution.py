@@ -10,9 +10,7 @@ Usage:
 from __future__ import annotations
 
 import math
-from datetime import date, timedelta
 from typing import Any
-
 
 # ── Statistics helpers ──────────────────────────────────────────────────────
 
@@ -43,9 +41,9 @@ def _covariance(a: list[float], b: list[float]) -> float:
 # ── Factor model ────────────────────────────────────────────────────────────
 
 
-def factor_returns(portfolio_returns: list[float],
-                   factor_exposures: dict[str, list[float]],
-                   risk_free: float = 0.0) -> dict[str, Any]:
+def factor_returns(
+    portfolio_returns: list[float], factor_exposures: dict[str, list[float]], risk_free: float = 0.0
+) -> dict[str, Any]:
     """Decompose portfolio returns into factor contributions.
 
     Uses a simple single-regression-per-factor approach (beta estimation).
@@ -148,10 +146,8 @@ def brinson_attribution(
     """
     all_tickers = set(portfolio_weights) | set(benchmark_weights)
 
-    p_ret = sum(portfolio_weights.get(t, 0) * portfolio_returns.get(t, 0)
-                for t in all_tickers)
-    b_ret = sum(benchmark_weights.get(t, 0) * benchmark_returns.get(t, 0)
-                for t in all_tickers)
+    p_ret = sum(portfolio_weights.get(t, 0) * portfolio_returns.get(t, 0) for t in all_tickers)
+    b_ret = sum(benchmark_weights.get(t, 0) * benchmark_returns.get(t, 0) for t in all_tickers)
     active = p_ret - b_ret
 
     # Brinson decomposition
@@ -186,8 +182,12 @@ def brinson_attribution(
             sm = sector_map[sector]
             sm["p_w"] += portfolio_weights.get(t, 0)
             sm["b_w"] += benchmark_weights.get(t, 0)
-            sm["p_r"] += portfolio_returns.get(t, 0) * (portfolio_weights.get(t, 0) if t in portfolio_weights else 0)
-            sm["b_r"] += benchmark_returns.get(t, 0) * (benchmark_weights.get(t, 0) if t in benchmark_weights else 0)
+            sm["p_r"] += portfolio_returns.get(t, 0) * (
+                portfolio_weights.get(t, 0) if t in portfolio_weights else 0
+            )
+            sm["b_r"] += benchmark_returns.get(t, 0) * (
+                benchmark_weights.get(t, 0) if t in benchmark_weights else 0
+            )
             sm["count"] += 1
 
         sector_breakdown: dict[str, dict] = {}
@@ -195,11 +195,14 @@ def brinson_attribution(
             if sm["count"] == 0:
                 continue
             sector_breakdown[sector] = {
-                "allocation": round((sm["p_w"] - sm["b_w"]) * (sm["b_r"] / sm["count"] if sm["count"] else 0), 6),
+                "allocation": round(
+                    (sm["p_w"] - sm["b_w"]) * (sm["b_r"] / sm["count"] if sm["count"] else 0), 6
+                ),
                 "selection": round(sm["b_w"] * (sm["p_r"] - sm["b_r"]), 6) if sm["count"] else 0,
                 "total": round(
                     (sm["p_w"] - sm["b_w"]) * (sm["b_r"] / sm["count"] if sm["count"] else 0)
-                    + sm["b_w"] * (sm["p_r"] - sm["b_r"]), 6
+                    + sm["b_w"] * (sm["p_r"] - sm["b_r"]),
+                    6,
                 ),
             }
 
@@ -211,9 +214,9 @@ def brinson_attribution(
 # ── Rolling Alpha ───────────────────────────────────────────────────────────
 
 
-def rolling_alpha(returns: list[float],
-                  benchmark_returns: list[float],
-                  window: int = 63) -> list[dict[str, Any]]:
+def rolling_alpha(
+    returns: list[float], benchmark_returns: list[float], window: int = 63
+) -> list[dict[str, Any]]:
     """Rolling alpha estimate over a sliding window.
 
     Args:
@@ -228,8 +231,8 @@ def rolling_alpha(returns: list[float],
     n = min(len(returns), len(benchmark_returns))
 
     for i in range(window, n):
-        rets = returns[i - window:i]
-        bench = benchmark_returns[i - window:i]
+        rets = returns[i - window : i]
+        bench = benchmark_returns[i - window : i]
 
         cov = _covariance(rets, bench)
         var_b = _variance(bench)
@@ -244,12 +247,14 @@ def rolling_alpha(returns: list[float],
         total_var = _variance(rets)
         r2 = min(1.0, explained / total_var) if total_var > 0 else 0.0
 
-        results.append({
-            "date_idx": i,
-            "alpha": round(alpha, 6),
-            "beta": round(beta, 4),
-            "r_squared": round(r2, 4),
-        })
+        results.append(
+            {
+                "date_idx": i,
+                "alpha": round(alpha, 6),
+                "beta": round(beta, 4),
+                "r_squared": round(r2, 4),
+            }
+        )
 
     return results
 
@@ -257,9 +262,9 @@ def rolling_alpha(returns: list[float],
 # ── Simple return statistics ────────────────────────────────────────────────
 
 
-def return_statistics(returns: list[float],
-                      risk_free_rate: float = 0.0,
-                      periods_per_year: int = 252) -> dict[str, Any]:
+def return_statistics(
+    returns: list[float], risk_free_rate: float = 0.0, periods_per_year: int = 252
+) -> dict[str, Any]:
     """Compute key return statistics for a return series.
 
     Args:
@@ -279,8 +284,7 @@ def return_statistics(returns: list[float],
     ann_ret = (1 + total_ret) ** (periods_per_year / n) - 1 if n > 0 else 0
     ann_vol = _std(returns) * math.sqrt(periods_per_year)
     excess = [r - risk_free_rate for r in returns]
-    sharpe = (_mean(excess) / _std(excess) * math.sqrt(periods_per_year)
-              if _std(excess) > 0 else 0)
+    sharpe = _mean(excess) / _std(excess) * math.sqrt(periods_per_year) if _std(excess) > 0 else 0
 
     # Sortino (downside deviation)
     downside = [r - risk_free_rate for r in returns if r < risk_free_rate]
@@ -292,7 +296,7 @@ def return_statistics(returns: list[float],
     max_dd = 0.0
     eq_curve = 1.0
     for r in returns:
-        eq_curve *= (1 + r)
+        eq_curve *= 1 + r
         peak = max(peak, eq_curve)
         dd_pct = (eq_curve - peak) / peak
         max_dd = min(max_dd, dd_pct)

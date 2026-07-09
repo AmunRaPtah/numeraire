@@ -27,9 +27,32 @@ KEY = ("cik", "ticker")
 
 # corporate-form noise to strip before matching names. NOT industry words
 # (therapeutics/pharma) — those disambiguate ("Arena Pharmaceuticals" != "Arena").
-_SUFFIX = {"inc", "incorporated", "corp", "corporation", "co", "company", "ltd",
-           "limited", "plc", "llc", "lp", "lllp", "sa", "ag", "nv", "se", "ab",
-           "holdings", "holding", "group", "the", "and", "of", "&"}
+_SUFFIX = {
+    "inc",
+    "incorporated",
+    "corp",
+    "corporation",
+    "co",
+    "company",
+    "ltd",
+    "limited",
+    "plc",
+    "llc",
+    "lp",
+    "lllp",
+    "sa",
+    "ag",
+    "nv",
+    "se",
+    "ab",
+    "holdings",
+    "holding",
+    "group",
+    "the",
+    "and",
+    "of",
+    "&",
+}
 
 
 def normalize(name: str) -> str:
@@ -51,8 +74,9 @@ def ingest() -> tuple[int, int]:
         name = r.get("title") or ""
         if not tk or cik is None:
             continue
-        rows.append({"cik": int(cik), "ticker": tk, "name": name,
-                     "name_norm": normalize(name), "fetched_at": fetched})
+        rows.append(
+            {"cik": int(cik), "ticker": tk, "name": name, "name_norm": normalize(name), "fetched_at": fetched}
+        )
     d = config.raw_source_dir("security_master")
     tot, add = merge_jsonl(d / "sec.jsonl", rows, KEY)
     print(f"[secmaster] {len(rows)} securities; landed {tot} (+{add})")
@@ -60,6 +84,7 @@ def ingest() -> tuple[int, int]:
 
 
 # ---- name resolver ----------------------------------------------------------
+
 
 def _index() -> dict:
     """{name_norm: (cik, ticker)} from the SEC ticker map. Built once, in memory."""
@@ -90,8 +115,8 @@ def resolve(sponsor: str, idx: dict | None = None):
     best = None
     for nn, hit in idx.items():
         short, long = (s, nn) if len(s) <= len(nn) else (nn, s)
-        if len(short) >= 4 and long.startswith(short + " ") or long == short:
-            # prefer the longest matched company name (most specific)
-            if best is None or len(nn) > best[0]:
-                best = (len(nn), hit)
+        matched = len(short) >= 4 and long.startswith(short + " ") or long == short
+        # prefer the longest matched company name (most specific)
+        if matched and (best is None or len(nn) > best[0]):
+            best = (len(nn), hit)
     return best[1] if best else None

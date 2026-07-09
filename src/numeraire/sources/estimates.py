@@ -18,6 +18,7 @@ raise) — this is a best-effort free substitute for paid data, not a guaranteed
 
 from __future__ import annotations
 
+import contextlib
 import http.cookiejar
 import json
 import urllib.error
@@ -28,11 +29,17 @@ from datetime import date, datetime, timezone
 from .. import config
 from ..landing import merge_jsonl
 
-QUOTE_SUMMARY = ("https://query1.finance.yahoo.com/v10/finance/quoteSummary/{t}"
-                  "?modules=earningsTrend&crumb={crumb}")
+QUOTE_SUMMARY = (
+    "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{t}?modules=earningsTrend&crumb={crumb}"
+)
 GET_CRUMB = "https://query1.finance.yahoo.com/v1/test/getcrumb"
 WARMUP = "https://fc.yahoo.com"
-UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+UA = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+}
 KEY = ("ticker", "period", "fetched_date")
 
 _opener_cache: tuple | None = None  # (opener, crumb) — bootstrapped once, reused
@@ -45,10 +52,9 @@ def _bootstrap():
         return _opener_cache
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-    try:
+    # fc.yahoo.com 404s but still seeds cookies via redirects
+    with contextlib.suppress(Exception):
         opener.open(urllib.request.Request(WARMUP, headers=UA), timeout=15)
-    except Exception:
-        pass  # fc.yahoo.com 404s but still seeds cookies via redirects
     try:
         crumb = opener.open(urllib.request.Request(GET_CRUMB, headers=UA), timeout=15).read().decode()
     except Exception as e:
@@ -72,10 +78,12 @@ def ingest(ticker: str) -> tuple[str, int, int]:
     try:
         payload = json.loads(opener.open(urllib.request.Request(url, headers=UA), timeout=30).read())
     except (urllib.error.URLError, urllib.error.HTTPError) as e:
-        print(f"[estimates] {t}: {e}"); return ("", 0, 0)
+        print(f"[estimates] {t}: {e}")
+        return ("", 0, 0)
     results = ((payload.get("quoteSummary") or {}).get("result")) or []
     if not results:
-        print(f"[estimates] {t}: no data"); return ("", 0, 0)
+        print(f"[estimates] {t}: no data")
+        return ("", 0, 0)
     trend = ((results[0].get("earningsTrend") or {}).get("trend")) or []
     fetched = datetime.now(timezone.utc).isoformat()
     fetched_date = date.today().isoformat()
@@ -85,24 +93,29 @@ def ingest(ticker: str) -> tuple[str, int, int]:
         if not period:
             continue
         ee, et, er = p.get("earningsEstimate") or {}, p.get("epsTrend") or {}, p.get("epsRevisions") or {}
-        rows.append({
-            "ticker": t, "period": period, "fetched_date": fetched_date,
-            "avg_estimate": _raw(ee.get("avg")),
-            "num_analysts": _raw(ee.get("numberOfAnalysts")),
-            "growth": _raw(p.get("growth")),
-            "eps_trend_current": _raw(et.get("current")),
-            "eps_trend_7d_ago": _raw(et.get("7daysAgo")),
-            "eps_trend_30d_ago": _raw(et.get("30daysAgo")),
-            "eps_trend_60d_ago": _raw(et.get("60daysAgo")),
-            "eps_trend_90d_ago": _raw(et.get("90daysAgo")),
-            "revisions_up_7d": _raw(er.get("upLast7days")),
-            "revisions_down_7d": _raw(er.get("downLast7days") or er.get("downLast7Days")),
-            "revisions_up_30d": _raw(er.get("upLast30days")),
-            "revisions_down_30d": _raw(er.get("downLast30days") or er.get("downLast30Days")),
-            "fetched_at": fetched,
-        })
+        rows.append(
+            {
+                "ticker": t,
+                "period": period,
+                "fetched_date": fetched_date,
+                "avg_estimate": _raw(ee.get("avg")),
+                "num_analysts": _raw(ee.get("numberOfAnalysts")),
+                "growth": _raw(p.get("growth")),
+                "eps_trend_current": _raw(et.get("current")),
+                "eps_trend_7d_ago": _raw(et.get("7daysAgo")),
+                "eps_trend_30d_ago": _raw(et.get("30daysAgo")),
+                "eps_trend_60d_ago": _raw(et.get("60daysAgo")),
+                "eps_trend_90d_ago": _raw(et.get("90daysAgo")),
+                "revisions_up_7d": _raw(er.get("upLast7days")),
+                "revisions_down_7d": _raw(er.get("downLast7days") or er.get("downLast7Days")),
+                "revisions_up_30d": _raw(er.get("upLast30days")),
+                "revisions_down_30d": _raw(er.get("downLast30days") or er.get("downLast30Days")),
+                "fetched_at": fetched,
+            }
+        )
     if not rows:
-        print(f"[estimates] {t}: no trend periods"); return ("", 0, 0)
+        print(f"[estimates] {t}: no trend periods")
+        return ("", 0, 0)
     src = config.raw_source_dir("estimates")
     path = src / f"{t}.jsonl"
     total, added = merge_jsonl(path, rows, KEY)

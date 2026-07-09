@@ -52,7 +52,8 @@ def _pit_momentum(con, asof: str) -> dict[str, float]:
     are silently excluded.
     """
     try:
-        rows = con.execute("""
+        rows = con.execute(
+            """
             WITH monthly AS (
                 SELECT ticker,
                        date_trunc('month', event_date) AS m,
@@ -69,14 +70,12 @@ def _pit_momentum(con, asof: str) -> dict[str, float]:
             JOIN monthly b ON a.ticker = b.ticker
             WHERE a.m = date_trunc('month', CAST(? AS DATE)) - INTERVAL '1 month'
               AND b.m = date_trunc('month', CAST(? AS DATE)) - INTERVAL '13 months'
-        """, [asof, asof, asof]).fetchall()
+        """,
+            [asof, asof, asof],
+        ).fetchall()
     except Exception:
         return {}
-    return {
-        r[0]: float(r[1]) / float(r[2]) - 1
-        for r in rows
-        if r[1] and r[2] and float(r[2]) > 0
-    }
+    return {r[0]: float(r[1]) / float(r[2]) - 1 for r in rows if r[1] and r[2] and float(r[2]) > 0}
 
 
 def rank(asof: str | None = None, top: int | None = None, con=None) -> list[dict]:
@@ -97,8 +96,7 @@ def rank(asof: str | None = None, top: int | None = None, con=None) -> list[dict
 
         # survivorship-free filter if membership table is loaded
         has_membership = con.execute(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_name='index_membership'"
+            "SELECT count(*) FROM information_schema.tables WHERE table_name='index_membership'"
         ).fetchone()[0]
         member_filter: set | None = None
         if has_membership:
@@ -127,35 +125,39 @@ def rank(asof: str | None = None, top: int | None = None, con=None) -> list[dict
         fundl = _ft.compute(con, tk_cik, asof, adj_prices)
 
         z_mom = _ft.zscore({tk: mom[tk] for tk in eligible})
-        z_ey  = _ft.zscore({tk: fundl[tk]["ey"]  for tk in eligible})
-        z_bp  = _ft.zscore({tk: fundl[tk]["bp"]  for tk in eligible})
+        z_ey = _ft.zscore({tk: fundl[tk]["ey"] for tk in eligible})
+        z_bp = _ft.zscore({tk: fundl[tk]["bp"] for tk in eligible})
         z_roe = _ft.zscore({tk: fundl[tk]["roe"] for tk in eligible})
-        z_gm  = _ft.zscore({tk: fundl[tk]["gm"]  for tk in eligible})
+        z_gm = _ft.zscore({tk: fundl[tk]["gm"] for tk in eligible})
 
         rows = []
         for tk in eligible:
-            comp = (z_mom.get(tk, 0.0) + z_ey.get(tk, 0.0) + z_bp.get(tk, 0.0)
-                    + z_roe.get(tk, 0.0) + z_gm.get(tk, 0.0))
-            n_factors = 1 + sum(
-                1 for k in ("ey", "bp", "roe", "gm")
-                if fundl[tk].get(k) is not None
+            comp = (
+                z_mom.get(tk, 0.0)
+                + z_ey.get(tk, 0.0)
+                + z_bp.get(tk, 0.0)
+                + z_roe.get(tk, 0.0)
+                + z_gm.get(tk, 0.0)
             )
-            rows.append({
-                "ticker":    tk,
-                "composite": comp,
-                "mom":       mom[tk],
-                "ey":        fundl[tk]["ey"],
-                "bp":        fundl[tk]["bp"],
-                "roe":       fundl[tk]["roe"],
-                "gm":        fundl[tk]["gm"],
-                "z_mom":     z_mom.get(tk, 0.0),
-                "z_ey":      z_ey.get(tk, 0.0),
-                "z_bp":      z_bp.get(tk, 0.0),
-                "z_roe":     z_roe.get(tk, 0.0),
-                "z_gm":      z_gm.get(tk, 0.0),
-                "price":     raw_prices[tk],
-                "n_factors": n_factors,
-            })
+            n_factors = 1 + sum(1 for k in ("ey", "bp", "roe", "gm") if fundl[tk].get(k) is not None)
+            rows.append(
+                {
+                    "ticker": tk,
+                    "composite": comp,
+                    "mom": mom[tk],
+                    "ey": fundl[tk]["ey"],
+                    "bp": fundl[tk]["bp"],
+                    "roe": fundl[tk]["roe"],
+                    "gm": fundl[tk]["gm"],
+                    "z_mom": z_mom.get(tk, 0.0),
+                    "z_ey": z_ey.get(tk, 0.0),
+                    "z_bp": z_bp.get(tk, 0.0),
+                    "z_roe": z_roe.get(tk, 0.0),
+                    "z_gm": z_gm.get(tk, 0.0),
+                    "price": raw_prices[tk],
+                    "n_factors": n_factors,
+                }
+            )
 
         rows.sort(key=lambda r: r["composite"], reverse=True)
         return rows[:top] if top else rows
@@ -177,13 +179,18 @@ def print_signals(asof: str | None = None, top: int = 40, con=None) -> None:
     # Macro regime header (silent if no FRED data loaded)
     try:
         from .sources import fred as _fred
+
         reg = _fred.regime(con or connect(), asof)
         if reg["label"] != "unknown":
             parts = []
-            if reg["fed_rate"]  is not None: parts.append(f"fed={reg['fed_rate']:.2f}%")
-            if reg["curve"]     is not None: parts.append(f"curve={reg['curve']:+.2f}%")
-            if reg["hy_spread"] is not None: parts.append(f"hy={reg['hy_spread']:.2f}%")
-            if reg["vix"]       is not None: parts.append(f"vix={reg['vix']:.1f}")
+            if reg["fed_rate"] is not None:
+                parts.append(f"fed={reg['fed_rate']:.2f}%")
+            if reg["curve"] is not None:
+                parts.append(f"curve={reg['curve']:+.2f}%")
+            if reg["hy_spread"] is not None:
+                parts.append(f"hy={reg['hy_spread']:.2f}%")
+            if reg["vix"] is not None:
+                parts.append(f"vix={reg['vix']:.1f}")
             print(f"[regime]  {reg['display']}  {' | '.join(parts)}")
     except Exception:
         pass
@@ -192,11 +199,15 @@ def print_signals(asof: str | None = None, top: int = 40, con=None) -> None:
     n_partial = sum(1 for r in rows if 1 < r["n_factors"] < 5)
     n_mom_only = sum(1 for r in rows if r["n_factors"] == 1)
 
-    print(f"[signals] {asof}  ranked={len(rows)}  "
-          f"full_factors={n_full}  partial={n_partial}  momentum_only={n_mom_only}")
+    print(
+        f"[signals] {asof}  ranked={len(rows)}  "
+        f"full_factors={n_full}  partial={n_partial}  momentum_only={n_mom_only}"
+    )
     if n_mom_only > 0:
-        print(f"          tip: run `numeraire ingest-universe` to add EDGAR "
-              f"value/quality factors for {n_mom_only} tickers")
+        print(
+            f"          tip: run `numeraire ingest-universe` to add EDGAR "
+            f"value/quality factors for {n_mom_only} tickers"
+        )
     print()
 
     def _fz(v):
@@ -214,18 +225,20 @@ def print_signals(asof: str | None = None, top: int = 40, con=None) -> None:
     print(hdr)
     print("—" * len(hdr))
     for i, r in enumerate(rows[:top], 1):
-        print(col.format(
-            i,
-            r["ticker"],
-            _fz(r["composite"]),
-            _fz(r["z_mom"]),
-            _fz(r["z_ey"]),
-            _fz(r["z_bp"]),
-            _fz(r["z_roe"]),
-            _fz(r["z_gm"]),
-            f"{r['price']:9.2f}",
-            f"{r['n_factors']}/5",
-        ))
+        print(
+            col.format(
+                i,
+                r["ticker"],
+                _fz(r["composite"]),
+                _fz(r["z_mom"]),
+                _fz(r["z_ey"]),
+                _fz(r["z_bp"]),
+                _fz(r["z_roe"]),
+                _fz(r["z_gm"]),
+                f"{r['price']:9.2f}",
+                f"{r['n_factors']}/5",
+            )
+        )
 
     if len(rows) > top:
         print(f"  ... {len(rows) - top} more (pass N to show more: `numeraire signals 100`)")
@@ -233,16 +246,20 @@ def print_signals(asof: str | None = None, top: int = 40, con=None) -> None:
     print()
     print("  Raw factor values (not z-scored):")
     sub_hdr = "  {:>3}  {:<6}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}  {:>9}".format(
-        "#", "ticker", "mom(%)", "EY(%)", "B/P(%)", "ROE(%)", "GrMgn(%)", "price")
+        "#", "ticker", "mom(%)", "EY(%)", "B/P(%)", "ROE(%)", "GrMgn(%)", "price"
+    )
     print(sub_hdr)
     print("  " + "—" * (len(sub_hdr) - 2))
     for i, r in enumerate(rows[:top], 1):
-        print("  {:>3}  {:<6}  {}  {}  {}  {}  {}  {:>9.2f}".format(
-            i, r["ticker"],
-            _fr(r["mom"]),
-            _fr(r["ey"]),
-            _fr(r["bp"]),
-            _fr(r["roe"]),
-            _fr(r["gm"]),
-            r["price"],
-        ))
+        print(
+            "  {:>3}  {:<6}  {}  {}  {}  {}  {}  {:>9.2f}".format(
+                i,
+                r["ticker"],
+                _fr(r["mom"]),
+                _fr(r["ey"]),
+                _fr(r["bp"]),
+                _fr(r["roe"]),
+                _fr(r["gm"]),
+                r["price"],
+            )
+        )

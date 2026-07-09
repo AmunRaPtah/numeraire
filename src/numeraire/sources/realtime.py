@@ -15,10 +15,10 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections import OrderedDict
-from typing import Any
 
 log = logging.getLogger("numeraire.realtime")
 
@@ -80,14 +80,14 @@ _REALTIME_TABLE_INDEX = """
 def ensure_table(con) -> None:
     """Create the realtime_prices table and index if they don't exist."""
     con.execute(_REALTIME_TABLE_DDL)
-    try:
+    # index may already exist
+    with contextlib.suppress(Exception):
         con.execute(_REALTIME_TABLE_INDEX)
-    except Exception:
-        pass  # index may already exist
 
 
-def _store_tick(con, ticker: str, price: float, change: float,
-                volume: int, source: str = "yfinance_poll") -> None:
+def _store_tick(
+    con, ticker: str, price: float, change: float, volume: int, source: str = "yfinance_poll"
+) -> None:
     """Write one tick to DuckDB."""
     ensure_table(con)
     con.execute(
@@ -160,6 +160,7 @@ def _yf_bars(symbol: str) -> dict | None:
     """Fetch latest price bar from yfinance (blocking — run in executor)."""
     try:
         import yfinance as yf
+
         tk = yf.Ticker(symbol)
         hist = tk.history(period="2d", interval="1d")
         if hist.empty:
@@ -203,6 +204,7 @@ class RealtimeIngester:
             return {}
 
         from numeraire.storage import connect
+
         con = self._con or connect()
         owns = self._con is None
         try:
@@ -214,8 +216,12 @@ class RealtimeIngester:
                 tick = await loop.run_in_executor(None, _yf_bars, sym)
                 if tick:
                     _store_tick(
-                        con, sym, tick["price"], tick["change"],
-                        tick["volume"], source="yfinance_poll",
+                        con,
+                        sym,
+                        tick["price"],
+                        tick["change"],
+                        tick["volume"],
+                        source="yfinance_poll",
                     )
                     results[sym] = tick
                 await asyncio.sleep(0.05)  # rate-limit: 20 req/s

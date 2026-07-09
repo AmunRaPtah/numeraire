@@ -24,7 +24,8 @@ PRICE_KEY = ("ticker", "date")
 ACTION_KEY = ("ticker", "date", "type")
 
 
-def _iso(ts): return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+def _iso(ts):
+    return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
 
 
 def ingest(ticker: str) -> tuple[int, int]:
@@ -32,22 +33,34 @@ def ingest(ticker: str) -> tuple[int, int]:
     try:
         d = json.loads(net.request(CHART.format(t=t), timeout=30, headers=UA))
     except net.NetworkError as e:
-        print(f"[prices]  {t}: {e}"); return (0, 0)
+        print(f"[prices]  {t}: {e}")
+        return (0, 0)
     res = (d.get("chart") or {}).get("result")
     if not res:
-        print(f"[prices]  {t}: no data"); return (0, 0)
-    r = res[0]; ts = r.get("timestamp") or []
-    q = (r["indicators"]["quote"][0] if r.get("indicators", {}).get("quote") else {})
-    adj = (r["indicators"].get("adjclose", [{}])[0].get("adjclose") if r.get("indicators") else None)
+        print(f"[prices]  {t}: no data")
+        return (0, 0)
+    r = res[0]
+    ts = r.get("timestamp") or []
+    q = r["indicators"]["quote"][0] if r.get("indicators", {}).get("quote") else {}
+    adj = r["indicators"].get("adjclose", [{}])[0].get("adjclose") if r.get("indicators") else None
     fetched = datetime.now(timezone.utc).isoformat()
     prices = []
     for i, t_i in enumerate(ts):
         if q.get("close", [None])[i] is None:
             continue
-        prices.append({"ticker": t, "date": _iso(t_i),
-                       "open": q["open"][i], "high": q["high"][i], "low": q["low"][i],
-                       "close": q["close"][i], "adjclose": (adj[i] if adj else None),
-                       "volume": q["volume"][i], "fetched_at": fetched})
+        prices.append(
+            {
+                "ticker": t,
+                "date": _iso(t_i),
+                "open": q["open"][i],
+                "high": q["high"][i],
+                "low": q["low"][i],
+                "close": q["close"][i],
+                "adjclose": (adj[i] if adj else None),
+                "volume": q["volume"][i],
+                "fetched_at": fetched,
+            }
+        )
     pdir = config.raw_source_dir("prices")
     ptot, padd = merge_jsonl(pdir / f"{t}.jsonl", prices, PRICE_KEY)
 
@@ -55,11 +68,25 @@ def ingest(ticker: str) -> tuple[int, int]:
     ev = r.get("events") or {}
     actions = []
     for d_ in (ev.get("dividends") or {}).values():
-        actions.append({"ticker": t, "date": _iso(d_["date"]), "type": "dividend",
-                        "value": d_.get("amount"), "fetched_at": fetched})
+        actions.append(
+            {
+                "ticker": t,
+                "date": _iso(d_["date"]),
+                "type": "dividend",
+                "value": d_.get("amount"),
+                "fetched_at": fetched,
+            }
+        )
     for s_ in (ev.get("splits") or {}).values():
-        actions.append({"ticker": t, "date": _iso(s_["date"]), "type": "split",
-                        "value": f"{s_.get('numerator')}/{s_.get('denominator')}", "fetched_at": fetched})
+        actions.append(
+            {
+                "ticker": t,
+                "date": _iso(s_["date"]),
+                "type": "split",
+                "value": f"{s_.get('numerator')}/{s_.get('denominator')}",
+                "fetched_at": fetched,
+            }
+        )
     atot = aadd = 0
     if actions:
         adir = config.raw_source_dir("corporate_actions")

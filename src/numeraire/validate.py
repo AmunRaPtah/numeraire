@@ -16,9 +16,13 @@ def validate(con=None, *, verbose=True) -> dict:
     try:
         tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
         if "fundamentals" not in tables:
-            if verbose: print("[validate] no warehouse yet")
+            if verbose:
+                print("[validate] no warehouse yet")
             return {"ok": True, "checks": {}}
-        q = lambda s: con.execute(s).fetchone()[0]
+
+        def q(s):
+            return con.execute(s).fetchone()[0]
+
         checks = {
             "observations": q("SELECT count(*) FROM fundamentals"),
             "companies": q("SELECT count(DISTINCT cik) FROM fundamentals"),
@@ -26,18 +30,23 @@ def validate(con=None, *, verbose=True) -> dict:
             "null_event_date": q("SELECT count(*) FROM fundamentals WHERE event_date IS NULL"),
             # lookahead: a fact 'known' before the period it describes even ended
             "lookahead_filed_before_event": q(
-                "SELECT count(*) FROM fundamentals WHERE knowledge_date < event_date"),
+                "SELECT count(*) FROM fundamentals WHERE knowledge_date < event_date"
+            ),
             # restated periods: same (cik,tag,unit,event_date) seen at >1 knowledge_date
             "restated_period_facts": q("""
                 SELECT count(*) FROM (
                   SELECT cik,tag,unit,event_date FROM fundamentals
                   GROUP BY 1,2,3,4 HAVING count(DISTINCT knowledge_date) > 1)"""),
         }
-        bad = checks["null_knowledge_date"] + checks["null_event_date"] + checks["lookahead_filed_before_event"]
+        bad = (
+            checks["null_knowledge_date"] + checks["null_event_date"] + checks["lookahead_filed_before_event"]
+        )
         ok = bad == 0
         if verbose:
-            for k, v in checks.items(): print(f"  {k}: {v:,}")
+            for k, v in checks.items():
+                print(f"  {k}: {v:,}")
             print(f"  -> {'OK' if ok else 'ISSUES'} ({bad} problematic rows)")
         return {"ok": ok, "checks": checks}
     finally:
-        if owns: con.close()
+        if owns:
+            con.close()

@@ -33,9 +33,14 @@ def test_validate_report_structure(con, env):
     result = validate.validate(con)
     assert "ok" in result
     assert "checks" in result
-    for check in ("observations", "companies", "null_knowledge_date",
-                   "null_event_date", "lookahead_filed_before_event",
-                   "restated_period_facts"):
+    for check in (
+        "observations",
+        "companies",
+        "null_knowledge_date",
+        "null_event_date",
+        "lookahead_filed_before_event",
+        "restated_period_facts",
+    ):
         assert check in result["checks"]
 
 
@@ -43,6 +48,7 @@ def test_validate_restatement_detection(con, env):
     """Restated periods count > 0 when seeded."""
     seed.seed_edgar("AAPL", 320193)
     from numeraire import warehouse as wh
+
     wh.build(con)
     result = validate.validate(con)
     assert result["checks"]["restated_period_facts"] > 0

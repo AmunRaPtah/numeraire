@@ -43,16 +43,21 @@ _monotonic = time.monotonic
 
 class NetworkError(Exception):
     def __init__(self, message: str, *, url: str | None = None, status: int | None = None):
-        super().__init__(message); self.url = url; self.status = status
+        super().__init__(message)
+        self.url = url
+        self.status = status
 
 
 class TransientError(NetworkError): ...
+
+
 class PermanentError(NetworkError): ...
 
 
 class RateLimitError(TransientError):
     def __init__(self, message: str, *, url=None, status=429, retry_after: float | None = None):
-        super().__init__(message, url=url, status=status); self.retry_after = retry_after
+        super().__init__(message, url=url, status=status)
+        self.retry_after = retry_after
 
 
 class CircuitOpenError(TransientError): ...
@@ -62,40 +67,53 @@ class _HostState:
     __slots__ = ("next_allowed", "fails", "open_until")
 
     def __init__(self):
-        self.next_allowed = 0.0; self.fails = 0; self.open_until = 0.0
+        self.next_allowed = 0.0
+        self.fails = 0
+        self.open_until = 0.0
 
 
 class RateLimiter:
-    def __init__(self, min_interval=DEFAULT_MIN_INTERVAL, threshold=BREAKER_THRESHOLD,
-                 cooldown=BREAKER_COOLDOWN):
-        self.min_interval = min_interval; self.threshold = threshold; self.cooldown = cooldown
+    def __init__(
+        self, min_interval=DEFAULT_MIN_INTERVAL, threshold=BREAKER_THRESHOLD, cooldown=BREAKER_COOLDOWN
+    ):
+        self.min_interval = min_interval
+        self.threshold = threshold
+        self.cooldown = cooldown
         self._hosts: dict[str, _HostState] = {}
         self.intervals: dict[str, float] = {}
 
-    def _state(self, host): return self._hosts.setdefault(host, _HostState())
+    def _state(self, host):
+        return self._hosts.setdefault(host, _HostState())
 
     def before(self, host):
-        st = self._state(host); now = _monotonic()
+        st = self._state(host)
+        now = _monotonic()
         if st.open_until > now:
-            raise CircuitOpenError(f"circuit open for {host} ({st.open_until-now:.1f}s left)", url=host)
+            raise CircuitOpenError(f"circuit open for {host} ({st.open_until - now:.1f}s left)", url=host)
         wait = st.next_allowed - now
-        if wait > 0: _sleep(min(wait, MAX_PARK))
+        if wait > 0:
+            _sleep(min(wait, MAX_PARK))
 
-    def _interval(self, host): return self.intervals.get(host, self.min_interval)
+    def _interval(self, host):
+        return self.intervals.get(host, self.min_interval)
 
     def on_success(self, host):
-        st = self._state(host); st.fails = 0; st.open_until = 0.0
+        st = self._state(host)
+        st.fails = 0
+        st.open_until = 0.0
         st.next_allowed = _monotonic() + self._interval(host)
 
     def on_failure(self, host, *, retry_after=None):
-        st = self._state(host); st.fails += 1
+        st = self._state(host)
+        st.fails += 1
         park = retry_after if retry_after is not None else self._interval(host)
         st.next_allowed = _monotonic() + min(max(park, 0.0), MAX_PARK)
         if st.fails >= self.threshold:
             st.open_until = _monotonic() + self.cooldown
             obs.log("net.circuit_open", host=host, fails=st.fails, cooldown=self.cooldown)
 
-    def is_open(self, host): return self._state(host).open_until > _monotonic()
+    def is_open(self, host):
+        return self._state(host).open_until > _monotonic()
 
 
 LIMITER = RateLimiter()
@@ -105,21 +123,28 @@ LIMITER.intervals["www.sec.gov"] = 0.12
 
 
 def _host(url):
-    try: return urllib.parse.urlparse(url).netloc or url
-    except Exception: return url
+    try:
+        return urllib.parse.urlparse(url).netloc or url
+    except Exception:
+        return url
 
 
 def _retry_after(headers):
-    if headers is None: return None
+    if headers is None:
+        return None
     val = headers.get("Retry-After")
-    if not val: return None
-    try: return max(0.0, float(val))
-    except (TypeError, ValueError): return None
+    if not val:
+        return None
+    try:
+        return max(0.0, float(val))
+    except (TypeError, ValueError):
+        return None
 
 
 def _backoff(attempt, retry_after):
-    if retry_after is not None: return min(retry_after, BACKOFF_CAP)
-    base = min(BACKOFF_BASE * (2 ** attempt), BACKOFF_CAP)
+    if retry_after is not None:
+        return min(retry_after, BACKOFF_CAP)
+    base = min(BACKOFF_BASE * (2**attempt), BACKOFF_CAP)
     return base / 2 + random.uniform(0, base / 2)
 
 
@@ -136,9 +161,13 @@ def request(url, *, data=None, headers=None, timeout=30, retries=DEFAULT_RETRIES
                 body = resp.read()
                 enc = resp.headers.get("Content-Encoding", "")
             if "gzip" in enc:
-                import gzip; body = gzip.decompress(body)
+                import gzip
+
+                body = gzip.decompress(body)
             elif "deflate" in enc:
-                import zlib; body = zlib.decompress(body)
+                import zlib
+
+                body = zlib.decompress(body)
             limiter.on_success(host)
             return body
         except urllib.error.HTTPError as e:
@@ -150,7 +179,8 @@ def request(url, *, data=None, headers=None, timeout=30, retries=DEFAULT_RETRIES
             else:
                 limiter.on_failure(host, retry_after=ra)
                 raise PermanentError(f"HTTP {e.code}: {url}", url=url, status=e.code) from e
-            limiter.on_failure(host, retry_after=ra); last = err
+            limiter.on_failure(host, retry_after=ra)
+            last = err
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             limiter.on_failure(host)
             last = TransientError(f"{type(e).__name__}: {url} ({e})", url=url)

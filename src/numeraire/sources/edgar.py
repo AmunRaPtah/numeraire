@@ -51,11 +51,20 @@ def _flatten(facts: dict, cik: int, entity: str):
                     if p.get("val") is None or not p.get("end"):
                         continue
                     yield {
-                        "cik": cik, "entity": entity, "taxonomy": taxonomy, "tag": tag,
-                        "unit": unit, "start": p.get("start"), "end": p["end"],
-                        "val": p["val"], "accn": p.get("accn"), "fy": p.get("fy"),
-                        "fp": p.get("fp"), "form": p.get("form"),
-                        "filed": p.get("filed"), "frame": p.get("frame"),
+                        "cik": cik,
+                        "entity": entity,
+                        "taxonomy": taxonomy,
+                        "tag": tag,
+                        "unit": unit,
+                        "start": p.get("start"),
+                        "end": p["end"],
+                        "val": p["val"],
+                        "accn": p.get("accn"),
+                        "fy": p.get("fy"),
+                        "fp": p.get("fp"),
+                        "form": p.get("form"),
+                        "filed": p.get("filed"),
+                        "frame": p.get("frame"),
                         "fetched_at": fetched,
                     }
 
@@ -64,16 +73,20 @@ def ingest(ticker: str, limit: int | None = None) -> tuple[str, int, int]:
     """Land all XBRL facts for `ticker` as bitemporal observations. Returns (file, total, added)."""
     cik = cik_for(ticker)
     if cik is None:
-        print(f"[edgar]   {ticker}: CIK not found"); return ("", 0, 0)
+        print(f"[edgar]   {ticker}: CIK not found")
+        return ("", 0, 0)
     try:
         facts = json.loads(net.request(FACTS_URL.format(cik=cik), timeout=45))
     except net.NetworkError as e:
-        print(f"[edgar]   {ticker} (CIK {cik}): fetch failed: {e}"); return ("", 0, 0)
+        print(f"[edgar]   {ticker} (CIK {cik}): fetch failed: {e}")
+        return ("", 0, 0)
     entity = facts.get("entityName", ticker)
     rows = list(_flatten(facts, cik, entity))
     src = config.raw_source_dir("edgar")
     path = src / f"{ticker.upper()}_CIK{cik:010d}.jsonl"
     total, added = merge_jsonl(path, rows, KEY)
-    print(f"[edgar]   {ticker} (CIK {cik}, {entity}): {len(rows)} observations, "
-          f"+{added} new ({total} total) -> {path.name}")
+    print(
+        f"[edgar]   {ticker} (CIK {cik}, {entity}): {len(rows)} observations, "
+        f"+{added} new ({total} total) -> {path.name}"
+    )
     return (config.rel_data_path(path), total, added)
