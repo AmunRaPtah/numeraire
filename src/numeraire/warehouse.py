@@ -8,7 +8,7 @@ the originally-reported value, not a later restatement).
 
 from __future__ import annotations
 
-from . import config
+from . import config, quality
 from .storage import connect
 
 
@@ -41,6 +41,11 @@ def build(con=None) -> int:
             n = 0
             print("[build]   no EDGAR files, fundamentals table empty")
         _load_aux(con)
+        # Admission control: quarantine backtest-poisoning rows before anything reads
+        # the warehouse, so `n` reflects the clean, usable observation count.
+        quality.gate(con)
+        if _has_files(pattern):
+            n = con.execute("SELECT count(*) FROM fundamentals").fetchone()[0]
         return n
     finally:
         if owns:

@@ -42,11 +42,28 @@ def validate(con=None, *, verbose=True) -> dict:
             checks["null_knowledge_date"] + checks["null_event_date"] + checks["lookahead_filed_before_event"]
         )
         ok = bad == 0
+        # Quarantine is healthy: garbage the ingest gate kept out of the live tables.
+        # Report it (not counted as an issue) so growth-vs-rejection stays visible.
+        quarantined = 0
+        quarantine_reasons: dict[str, int] = {}
+        for t in ("fundamentals_rejected", "fred_rejected", "prices_rejected"):
+            if t not in tables:
+                continue
+            for reason, n in con.execute(
+                f"SELECT reject_reason, count(*) FROM {t} GROUP BY 1"
+            ).fetchall():
+                quarantined += n
+                quarantine_reasons[reason] = quarantine_reasons.get(reason, 0) + n
         if verbose:
             for k, v in checks.items():
                 print(f"  {k}: {v:,}")
             print(f"  -> {'OK' if ok else 'ISSUES'} ({bad} problematic rows)")
-        return {"ok": ok, "checks": checks}
+            if quarantined:
+                top = ", ".join(f"{k}={v}" for k, v in
+                                sorted(quarantine_reasons.items(), key=lambda kv: -kv[1]))
+                print(f"  quarantined by ingest gate: {quarantined:,} ({top})")
+        return {"ok": ok, "checks": checks,
+                "quarantined": quarantined, "quarantine_reasons": quarantine_reasons}
     finally:
         if owns:
             con.close()

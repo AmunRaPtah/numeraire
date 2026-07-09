@@ -13,18 +13,23 @@ def test_validate_empty_no_error(con, env):
     assert result["ok"] is True
 
 
-def test_validate_clean_data(con, env):
-    """Clean bitemporal data with no lookahead/nulls should pass."""
-    seed.build_full(con)
+def test_gate_quarantines_garbage_leaving_clean_warehouse(con, env):
+    """The ingest gate (run inside build) removes the seeded garbage from the live
+    tables and quarantines it, so validate sees a clean, backtest-safe warehouse."""
+    seed.build_full(con)  # build_full -> warehouse.build -> quality.gate
     result = validate.validate(con)
-    # Should have data
     assert result["checks"]["observations"] > 0
-    # Each ticker's seed creates 1 null-knowledge-date Revenues row (5 tickers)
-    assert result["checks"]["null_knowledge_date"] == 5
-    # Each ticker's seed creates 1 lookahead row (5 tickers)
-    assert result["checks"]["lookahead_filed_before_event"] == 5
-    # We intentionally have issues
-    assert result["ok"] is False
+    # The intentionally-seeded poison is gone from fundamentals...
+    assert result["checks"]["null_knowledge_date"] == 0
+    assert result["checks"]["lookahead_filed_before_event"] == 0
+    assert result["ok"] is True
+    # ...and preserved in quarantine: 1 null-kd + 1 lookahead row per ticker (5 each).
+    by = dict(con.execute(
+        "SELECT reject_reason, count(*) FROM fundamentals_rejected GROUP BY 1"
+    ).fetchall())
+    assert by.get("null_knowledge_date") == 5
+    assert by.get("lookahead") == 5
+    assert result["quarantined"] >= 10
 
 
 def test_validate_report_structure(con, env):
@@ -45,10 +50,21 @@ def test_validate_report_structure(con, env):
 
 
 def test_validate_restatement_detection(con, env):
-    """Restated periods count > 0 when seeded."""
-    seed.seed_edgar("AAPL", 320193)
+    """A genuine restatement — one period filed twice with different values at
+    different (valid, non-lookahead) knowledge dates — is detected, and both filings
+    survive the ingest gate."""
+    period = {"cik": 999, "entity": "R CO", "taxonomy": "us-gaap",
+              "tag": "NetIncomeLoss", "unit": "USD",
+              "start": "2024-01-01", "end": "2024-03-31", "fy": "2024", "fp": "Q1",
+              "form": "10-Q", "frame": "CY1"}
+    seed._write_jsonl("edgar", "RSTT_CIK999.jsonl", [
+        {**period, "val": 5_000_000, "filed": "2024-05-01", "accn": "orig"},
+        {**period, "val": 5_200_000, "filed": "2024-11-01", "accn": "restated"},
+    ])
     from numeraire import warehouse as wh
 
     wh.build(con)
     result = validate.validate(con)
     assert result["checks"]["restated_period_facts"] > 0
+    # both filings are valid PIT rows (knowledge_date > event_date) -> not quarantined
+    assert con.execute("SELECT count(*) FROM fundamentals WHERE cik=999").fetchone()[0] == 2
