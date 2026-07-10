@@ -17,3 +17,16 @@ mv "$TMP" data
 rm -rf data.old
 
 echo "[numeraire-sync] $(date -u +%FT%TZ) refreshed from OneDrive, warehouse: $(du -sh data/warehouse.duckdb 2>/dev/null | cut -f1)"
+
+# Push the refreshed warehouse to the Modal Volume so Hermes's off-box signal
+# compute (modal app 'hermes-numeraire') stays in sync. Non-fatal: a Modal
+# hiccup must never break the local warehouse refresh above.
+MODAL_BIN=/root/projects/pardalos/.venv/bin/modal
+if [ -x "$MODAL_BIN" ] && [ -f data/warehouse.duckdb ]; then
+  ( set +e
+    set -a; . /root/projects/pardalos/.env.local 2>/dev/null; set +a
+    "$MODAL_BIN" volume put numeraire-warehouse data/warehouse.duckdb /warehouse.duckdb --force \
+      && echo "[numeraire-sync] pushed warehouse to Modal Volume numeraire-warehouse" \
+      || echo "[numeraire-sync] WARN: Modal Volume push failed (off-box signals may be stale)"
+  ) || true
+fi
