@@ -103,8 +103,13 @@ def resolve(sponsor: str, idx: dict | None = None):
 
     1. exact normalized match
     2. the sponsor's normalized name *starts with* a company name, or vice versa
-       (handles "ModernaTX" / "Moderna", "Pfizer Research" / "Pfizer") — but only when
-       the shorter side is >=4 chars, to avoid matching on a stray short token.
+       (handles "Pfizer Research" / "Pfizer") — but only when the shorter side is
+       >=4 chars and the split lands on a word boundary (a following space), to
+       avoid matching on a stray short token.
+    3. a glued-suffix variant of #2 with no word boundary (handles "ModernaTX" /
+       "Moderna", "SanofiUS" / "Sanofi") — the real CT.gov/EDGAR naming pattern for
+       a handful of sponsors — gated tighter (shorter side >=5 chars, leftover
+       suffix <=3 chars) since there's no space to confirm the boundary is real.
     """
     idx = idx if idx is not None else _index()
     s = normalize(sponsor)
@@ -115,7 +120,11 @@ def resolve(sponsor: str, idx: dict | None = None):
     best = None
     for nn, hit in idx.items():
         short, long = (s, nn) if len(s) <= len(nn) else (nn, s)
-        matched = len(short) >= 4 and long.startswith(short + " ") or long == short
+        matched = (
+            long == short
+            or (len(short) >= 4 and long.startswith(short + " "))
+            or (len(short) >= 5 and long.startswith(short) and len(long) - len(short) <= 3)
+        )
         # prefer the longest matched company name (most specific)
         if matched and (best is None or len(nn) > best[0]):
             best = (len(nn), hit)
