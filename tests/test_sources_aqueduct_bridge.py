@@ -76,7 +76,9 @@ def test_ingest_matches_resolved_sponsor(monkeypatch, tmp_path):
     warehouse = tmp_path / "warehouse.duckdb"
     warehouse.touch()
     monkeypatch.setattr(aqueduct_bridge, "AQ_WAREHOUSE", str(warehouse))
-    trial_row = ("NCT001", "A trial", "RECRUITING", "PHASE3", "cond", "interv", "2026-01-01", None, "AbbVie Inc.")
+    trial_row = (
+        "NCT001", "A trial", "RECRUITING", "PHASE3", "cond", "interv", "2026-01-01", None, "AbbVie Inc.",
+    )
     monkeypatch.setattr(
         aqueduct_bridge.duckdb,
         "connect",
