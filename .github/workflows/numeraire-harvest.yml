@@ -3,7 +3,8 @@ name: numeraire-harvest
 # Runs the numeraire data harvest on GitHub Actions instead of the Contabo VPS
 # (ingest-universe + warehouse build OOMed and got killed on the 8GB box). Mirrors
 # aqueduct-harvest.yml exactly. State (data/: raw + warehouse) is stored as a single
-# state.tgz archive on OneDrive and pulled/pushed via rclone.
+# state.tgz archive on Google Drive and pulled/pushed via rclone. Moved off OneDrive
+# 2026-07-21 (shared quota with an unrelated ~1TB media library).
 on:
   workflow_dispatch: {}
   schedule:
@@ -36,23 +37,23 @@ jobs:
           mkdir -p ~/.config/rclone
           printf '%s' "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
           chmod 600 ~/.config/rclone/rclone.conf
-      - name: Pull warehouse state from OneDrive
+      - name: Pull warehouse state from Google Drive
         run: |
           mkdir -p data
-          if rclone copyto onedrive:numeraire-state/state.tgz state.tgz --onedrive-chunk-size 100M --stats 30s; then
+          if rclone copyto gdrive4:numeraire-state/state.tgz state.tgz --drive-chunk-size 64M --stats 30s; then
             tar -xzf state.tgz -C data && rm -f state.tgz
           else
-            echo "No state.tgz on OneDrive yet — starting from an empty data/"
+            echo "No state.tgz on Google Drive yet — starting from an empty data/"
           fi
           du -sh data 2>/dev/null || true
       - name: Pull aqueduct warehouse (read-only, for the pipeline bridge)
         continue-on-error: true
         run: |
           mkdir -p aqueduct-data
-          if rclone copyto onedrive:aqueduct-state/state.tgz aq-state.tgz --onedrive-chunk-size 100M --stats 30s; then
+          if rclone copyto gdrive4:aqueduct-state/state.tgz aq-state.tgz --drive-chunk-size 64M --stats 30s; then
             tar -xzf aq-state.tgz -C aqueduct-data && rm -f aq-state.tgz
           else
-            echo "No aqueduct state.tgz on OneDrive — pipeline bridge will skip"
+            echo "No aqueduct state.tgz on Google Drive — pipeline bridge will skip"
           fi
       - name: Harvest (membership + security master + EDGAR fundamentals + prices + estimates + crypto + pharma edge)
         env:
@@ -66,7 +67,7 @@ jobs:
           python -m numeraire crypto
           python -m numeraire fda-universe
           python -m numeraire pipeline-universe
-      - name: Push updated warehouse state to OneDrive
+      - name: Push updated warehouse state to Google Drive
         run: |
           tar -czf state.tgz -C data --exclude='*.wal' .
-          rclone copyto state.tgz onedrive:numeraire-state/state.tgz --onedrive-chunk-size 100M --stats 30s
+          rclone copyto state.tgz gdrive4:numeraire-state/state.tgz --drive-chunk-size 64M --stats 30s
