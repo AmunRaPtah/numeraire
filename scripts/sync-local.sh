@@ -8,12 +8,17 @@ cd /root/projects/numeraire
 TMP="data.new.$$"
 rclone copyto gdrive4:numeraire-state/state.tgz "state.tgz.$$" --drive-chunk-size 64M
 mkdir -p "$TMP"
-tar -xzf "state.tgz.$$" -C "$TMP"
+# raw/ lives off-box now (moved to media2:numeraire-data/raw on 2026-08-04 to relieve
+# local disk pressure: it was 5.6G and this VPS was down to 11G free). Skip extracting
+# it from the tarball entirely and re-symlink it below instead of letting it land back
+# on local disk every week.
+tar -xzf "state.tgz.$$" -C "$TMP" --exclude='raw' --exclude='raw/*'
 rm -f "state.tgz.$$"
 
 rm -rf data.old
 [ -d data ] && mv data data.old
 mv "$TMP" data
+ln -s /media/numeraire-data/raw data/raw
 rm -rf data.old
 
 echo "[numeraire-sync] $(date -u +%FT%TZ) refreshed from Google Drive, warehouse: $(du -sh data/warehouse.duckdb 2>/dev/null | cut -f1)"
